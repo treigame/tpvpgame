@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Multiplayer Game</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: grid;
+            grid-template-areas:
+                ". up ."
+                "left center right"
+                ". down .";
+            gap: 10px;
+        }
+        #move-up { grid-area: up; }
+        #move-left { grid-area: left; }
+        #move-down { grid-area: down; }
+        #move-right { grid-area: right; }
+        #attack { grid-area: center; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="controls">
+        <button id="move-up">W</button>
+        <button id="move-left">A</button>
+        <button id="move-down">S</button>
+        <button id="move-right">D</button>
+        <button id="attack">攻撃</button>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
