@@ -3,13 +3,14 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const ws = new WebSocket('wss://tpvpgame-2.onrender.com');
+// 💡 重要な修正点: 'tpvpgame-2'をあなたのゲームサーバーのURLに書き換える
+const ws = new WebSocket('wss://tpvpgame-1.onrender.com'); 
 
 let players = {};
 let myId = null;
 let lastMove = {};
 let lastSendTime = 0;
-const sendInterval = 1000; // 100ミリ秒ごとに送信（1秒間に10回）
+const sendInterval = 100; // 100ミリ秒ごとに送信（1秒間に10回）
 
 // ✨ 新しい物理定数
 const GRAVITY = 0.5;
@@ -110,7 +111,7 @@ document.getElementById('move-right').addEventListener('click', () => {
             type: 'move',
             id: myId,
             x: players[myId].x,
-            y: players[myId].y
+            y: players[id].y
         }));
     }
 });
@@ -129,13 +130,15 @@ if (document.getElementById('attack')) {
 
 
 // ジョイスティックのイベントリスナー
-joystickHandle.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    joystickCenter = {
-        x: joystickHandle.getBoundingClientRect().left + joystickHandle.offsetWidth / 2,
-        y: joystickHandle.getBoundingClientRect().top + joystickHandle.offsetHeight / 2
-    };
-});
+if (joystickHandle) {
+    joystickHandle.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        joystickCenter = {
+            x: joystickHandle.getBoundingClientRect().left + joystickHandle.offsetWidth / 2,
+            y: joystickHandle.getBoundingClientRect().top + joystickHandle.offsetHeight / 2
+        };
+    });
+}
 
 document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
