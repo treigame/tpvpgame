@@ -3,7 +3,7 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const ws = new WebSocket('wss://tpvpgame-2.onrender.com');
+const ws = new WebSocket('wss://tpvpgame-3.onrender.com');
 let players = {};
 let myId = null;
 
