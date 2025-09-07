@@ -2,6 +2,16 @@
 <html>
 <head>
     <title>Multiplayer Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
+        #controls {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            display: flex;
+            gap: 10px;
+        }
+    </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
@@ -9,41 +19,8 @@
         <button id="move-left">左へ</button>
         <button id="move-right">右へ</button>
         <button id="move-up">ジャンプ</button>
+        <button id="attack">攻撃</button>
     </div>
-
-    <div id="joystick-container">
-        <div id="joystick-base"></div>
-        <div id="joystick-handle"></div>
-    </div>
-    <style>
-        #joystick-container {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            width: 150px;
-            height: 150px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        #joystick-base {
-            width: 100px;
-            height: 100px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-        }
-        #joystick-handle {
-            width: 50px;
-            height: 50px;
-            background: #fff;
-            border-radius: 50%;
-            position: absolute;
-            cursor: grab;
-        }
-    </style>
-
     <script src="script.js"></script>
 </body>
 </html>
