@@ -1,65 +1,8 @@
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+const wss = new WebSocket.Server({ port: 10000 }); // ポート番号は10000
 
 let players = {};
 let playerCounter = 0;
-
-// 新しい物理定数とプラットフォームの定義
-const GRAVITY = 0.5;
-const JUMP_POWER = -15;
-const PLAYER_RADIUS = 15;
-const GROUND_Y = 500;
-const platforms = [
-    { x: 100, y: GROUND_Y - 150, width: 200, height: 20, type: 'normal' },
-    { x: 400, y: GROUND_Y - 250, width: 150, height: 20, type: 'slide' },
-    { x: 700, y: GROUND_Y - 350, width: 150, height: 20, type: 'gravity-flip' }
-];
-
-// ゲームの更新ループ (サーバーで物理演算を実行)
-setInterval(() => {
-    for (const id in players) {
-        const player = players[id];
-        
-        // 物理演算
-        player.dy += GRAVITY;
-        player.y += player.dy;
-
-        // プラットフォームとの衝突判定
-        let onPlatform = false;
-        platforms.forEach(p => {
-            if (
-                player.x > p.x &&
-                player.x < p.x + p.width &&
-                player.y + PLAYER_RADIUS >= p.y &&
-                player.y + PLAYER_RADIUS <= p.y + p.height &&
-                player.dy >= 0
-            ) {
-                player.y = p.y - PLAYER_RADIUS;
-                player.dy = 0;
-                onPlatform = true;
-                if (p.type === 'gravity-flip') {
-                    player.dy = -JUMP_POWER * 1.5;
-                }
-            }
-        });
-
-        // 地面との衝突判定
-        if (!onPlatform && player.y + PLAYER_RADIUS >= GROUND_Y) {
-            player.y = GROUND_Y - PLAYER_RADIUS;
-            player.dy = 0;
-            player.onGround = true;
-        } else if (onPlatform) {
-            player.onGround = true;
-        } else {
-            player.onGround = false;
-        }
-    }
-}, 1000 / 60);
-
-// クライアントへの定期的なブロードキャスト
-setInterval(() => {
-    broadcast({ type: 'players_update', players: players });
-}, 1000 / 30); // 1秒間に30回、プレイヤー情報を送信
 
 function broadcast(message) {
     const jsonMessage = JSON.stringify(message);
@@ -72,28 +15,54 @@ function broadcast(message) {
 
 wss.on('connection', ws => {
     const id = `player_${playerCounter++}`;
-    players[id] = { id: id, x: 100, y: 100, hp: 100, dy: 0, onGround: false };
+    players[id] = { id: id, x: 100, y: 100, hp: 100 };
     console.log(`新しいプレイヤーが接続しました: ${id}`);
 
     // 新しいプレイヤーに初期情報を送信
     ws.send(JSON.stringify({ type: 'init', id: id, players: players }));
 
+    // 他の全プレイヤーに新しいプレイヤーの情報を送信
+    broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
+
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
             const player = players[data.id];
-            if (!player) return;
 
-            if (data.type === 'move') {
-                // クライアントからの入力（X座標の変更）をサーバーのプレイヤーに反映
-                const moveSpeed = 5;
-                if (data.direction === 'left') player.x -= moveSpeed;
-                if (data.direction === 'right') player.x += moveSpeed;
-            } else if (data.type === 'jump') {
-                // クライアントからのジャンプメッセージを受け取る
-                if (player.onGround) {
-                    player.dy = JUMP_POWER;
-                    player.onGround = false;
+            if (data.type === 'move' && player) {
+                // クライアントからの移動情報を受信し、プレイヤーの位置を更新
+                player.x = data.x;
+                player.y = data.y;
+                
+                // 他のプレイヤーに位置情報を送信
+                broadcast(data);
+            } else if (data.type === 'attack') {
+                const targetId = data.targetId;
+                const attackerId = data.attackerId; // 攻撃者のIDも受け取る
+
+                if (players[targetId] && players[attackerId]) {
+                    // 攻撃者の情報に基づいて攻撃を処理
+                    const attacker = players[attackerId];
+                    const target = players[targetId];
+
+                    // 攻撃範囲のチェック（サーバー側でも基本的なチェックを行う）
+                    const dist = Math.sqrt(
+                        Math.pow(attacker.x - target.x, 2) + 
+                        Math.pow(attacker.y - target.y, 2)
+                    );
+
+                    if (dist < 50) { // 例: 攻撃範囲50ピクセル
+                        target.hp -= 10; // HPを減少
+                        console.log(`Player ${attackerId} attacked Player ${targetId}. HP: ${target.hp}`);
+
+                        if (target.hp <= 0) {
+                            delete players[targetId];
+                            broadcast({ type: 'player_died', id: targetId });
+                            console.log(`Player ${targetId} died.`);
+                        } else {
+                            broadcast({ type: 'hp_update', id: targetId, hp: target.hp });
+                        }
+                    }
                 }
             }
         } catch (error) {

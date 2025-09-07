@@ -3,37 +3,20 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const ws = new WebSocket('wss://tpvpgame-2.onrender.com');
+const ws = new WebSocket('wss://tpvpgame-2.onrender.com'); // あなたのゲームサーバーのURLに合わせる
 
 let players = {};
 let myId = null;
-let lastMove = {};
+let lastMove = {}; // 最後に送信した位置情報を保存する
 let lastSendTime = 0;
-const sendInterval = 100; // 100ミリ秒ごとに送信（1秒間に10回）
+const sendInterval = 100; // 100ミリ秒ごとに送信 (1秒間に10回)
 
-// ✨ 新しい物理定数
+// ✨ 物理定数
 const GRAVITY = 0.5;
 const JUMP_POWER = -15;
 const PLAYER_RADIUS = 15;
-const GROUND_Y = canvas.height - 50;
-const SLIDE_FRICTION = 0.98;
-const NORMAL_FRICTION = 0.8;
+const GROUND_Y = canvas.height - 50; // 地面のY座標
 
-// プラットフォームの定義
-const platforms = [
-    { x: 100, y: canvas.height - 150, width: 200, height: 20, type: 'normal' },
-    { x: 400, y: canvas.height - 250, width: 150, height: 20, type: 'slide' },
-    { x: 700, y: canvas.height - 350, width: 150, height: 20, type: 'gravity-flip' }
-];
-
-// ジョイスティックの要素を取得
-const joystickBase = document.getElementById('joystick-base');
-const joystickHandle = document.getElementById('joystick-handle');
-let isDragging = false;
-let joystickCenter = { x: 0, y: 0 };
-let joystickMoveX = 0;
-
-// WebSocketからのメッセージ受信
 ws.onmessage = event => {
     const data = JSON.parse(event.data);
     if (data.type === 'init') {
@@ -43,8 +26,10 @@ ws.onmessage = event => {
         }
     } else if (data.type === 'player_update') {
         if (!players[data.id]) {
+            // 新しいプレイヤーが参加した場合、初期値を設定
             players[data.id] = { x: data.x, y: data.y, hp: data.hp, dy: 0, onGround: false };
         } else {
+            // 既存のプレイヤーの位置とHPを更新
             players[data.id].x = data.x;
             players[data.id].y = data.y;
             players[data.id].hp = data.hp;
@@ -60,7 +45,6 @@ ws.onmessage = event => {
     }
 };
 
-// キーボード操作
 document.addEventListener('keydown', e => {
     if (myId === null || !players[myId]) return;
 
@@ -77,10 +61,13 @@ document.addEventListener('keydown', e => {
         }
     }
     
-    // 攻撃機能は削除
-    
+    if (e.key === ' ') {
+        attackNearestPlayer();
+    }
+
     if (moveX !== 0) {
         myPlayer.x += moveX;
+        // キーダウンイベントでは即座に位置を送信
         ws.send(JSON.stringify({
             type: 'move',
             id: myId,
@@ -90,7 +77,6 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// ボタン操作
 document.getElementById('move-left').addEventListener('click', () => {
     if (myId !== null && players[myId]) {
         players[myId].x -= 5;
@@ -110,7 +96,7 @@ document.getElementById('move-right').addEventListener('click', () => {
             type: 'move',
             id: myId,
             x: players[myId].x,
-            y: players[id].y
+            y: players[myId].y
         }));
     }
 });
@@ -122,37 +108,33 @@ document.getElementById('move-up').addEventListener('click', () => {
     }
 });
 
-// 攻撃ボタンは削除
-if (document.getElementById('attack')) {
-    document.getElementById('attack').style.display = 'none';
-}
-
-
-// ジョイスティックのイベントリスナー
-if (joystickHandle) {
-    joystickHandle.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        joystickCenter = {
-            x: joystickHandle.getBoundingClientRect().left + joystickHandle.offsetWidth / 2,
-            y: joystickHandle.getBoundingClientRect().top + joystickHandle.offsetHeight / 2
-        };
-    });
-}
-document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const dx = e.clientX - joystickCenter.x;
-    const maxMove = joystickBase.offsetWidth / 2;
-    const moveX = Math.max(-maxMove, Math.min(maxMove, dx));
-    
-    joystickHandle.style.left = `${moveX + maxMove}px`;
-    joystickMoveX = moveX / maxMove;
-});
-document.addEventListener('mouseup', () => {
-    isDragging = false;
-    joystickMoveX = 0;
-    joystickHandle.style.left = '50%';
+document.getElementById('attack').addEventListener('click', () => {
+    attackNearestPlayer();
 });
 
+
+function attackNearestPlayer() {
+    let nearestPlayerId = null;
+    let minDistance = Infinity;
+    if (!players[myId]) return;
+
+    for (let id in players) {
+        if (id != myId) {
+            const distance = Math.sqrt(
+                Math.pow(players[id].x - players[myId].x, 2) + 
+                Math.pow(players[id].y - players[myId].y, 2)
+            );
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestPlayerId = id;
+            }
+        }
+    }
+    if (nearestPlayerId) {
+        // 攻撃イベントをサーバーに送信
+        ws.send(JSON.stringify({ type: 'attack', targetId: nearestPlayerId, attackerId: myId }));
+    }
+}
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -161,68 +143,26 @@ function gameLoop() {
     ctx.fillStyle = '#4a2c09';
     ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
 
-    // プラットフォームを描画
-    platforms.forEach(p => {
-        if (p.type === 'normal') {
-            ctx.fillStyle = '#6a4a2a';
-        } else if (p.type === 'slide') {
-            ctx.fillStyle = '#ADD8E6'; // 明るい青
-        } else if (p.type === 'gravity-flip') {
-            ctx.fillStyle = '#800080'; // 紫色
-        }
-        ctx.fillRect(p.x, p.y, p.width, p.height);
-    });
-
     for (let id in players) {
         const player = players[id];
-        
-        // プレイヤーの動きを適用
-        if (id == myId) {
-            // ジョイスティックからの入力を適用
-            const moveSpeed = 5;
-            player.x += joystickMoveX * moveSpeed;
-        }
 
         // 物理演算
         player.dy += GRAVITY;
         player.y += player.dy;
 
-        // プラットフォームとの衝突判定
-        let onPlatform = false;
-        platforms.forEach(p => {
-            if (
-                player.x > p.x &&
-                player.x < p.x + p.width &&
-                player.y + PLAYER_RADIUS >= p.y &&
-                player.y + PLAYER_RADIUS <= p.y + p.height + player.dy &&
-                player.dy >= 0
-            ) {
-                player.y = p.y - PLAYER_RADIUS;
-                player.dy = 0;
-                onPlatform = true;
-
-                if (p.type === 'slide') {
-                    player.x += joystickMoveX * 2; // 滑る床では横移動が速くなる
-                } else if (p.type === 'gravity-flip') {
-                    player.dy = -JUMP_POWER * 1.5; // より高くジャンプ
-                }
-            }
-        });
-
         // 地面との衝突判定
-        if (!onPlatform && player.y + PLAYER_RADIUS >= GROUND_Y) {
+        if (player.y + PLAYER_RADIUS >= GROUND_Y) {
             player.y = GROUND_Y - PLAYER_RADIUS;
             player.dy = 0;
-            player.onGround = true;
-        } else if (onPlatform) {
             player.onGround = true;
         } else {
             player.onGround = false;
         }
 
-        // 最後の送信からsendInterval以上経過した場合のみ送信
-        if (id == myId && (Date.now() - lastSendTime > sendInterval || player.onGround)) {
+        // 最後の送信からsendInterval以上経過した場合、またはonGroundの場合のみ送信
+        if (id === myId && (Date.now() - lastSendTime > sendInterval || player.onGround)) {
             const currentMove = { x: player.x, y: player.y };
+            // 位置が変わった場合のみ送信する
             if (JSON.stringify(currentMove) !== JSON.stringify(lastMove)) {
                 ws.send(JSON.stringify({
                     type: 'move',
@@ -234,15 +174,15 @@ function gameLoop() {
                 lastSendTime = Date.now();
             }
         }
-        
+
         // プレイヤーを描画
         ctx.beginPath();
         ctx.arc(player.x, player.y, PLAYER_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = (id == myId) ? 'blue' : 'red';
+        ctx.fillStyle = (id === myId) ? 'blue' : 'red'; // 自分のプレイヤーは青、他は赤
         ctx.fill();
         ctx.closePath();
 
-        // 目を描画（省略）
+        // 目を描画
         ctx.beginPath();
         ctx.arc(player.x + 5, player.y - 5, 5, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
