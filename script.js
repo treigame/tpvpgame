@@ -3,8 +3,7 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// 💡 重要な修正点: 'tpvpgame-2'をあなたのゲームサーバーのURLに書き換える
-const ws = new WebSocket('wss://tpvpgame-1.onrender.com'); 
+const ws = new WebSocket('wss://tpvpgame-2.onrender.com');
 
 let players = {};
 let myId = null;
@@ -139,7 +138,6 @@ if (joystickHandle) {
         };
     });
 }
-
 document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
     const dx = e.clientX - joystickCenter.x;
@@ -147,9 +145,8 @@ document.addEventListener('mousemove', (e) => {
     const moveX = Math.max(-maxMove, Math.min(maxMove, dx));
     
     joystickHandle.style.left = `${moveX + maxMove}px`;
-    joystickMoveX = moveX / maxMove; // -1 から 1 の範囲で移動量を計算
+    joystickMoveX = moveX / maxMove;
 });
-
 document.addEventListener('mouseup', () => {
     isDragging = false;
     joystickMoveX = 0;
