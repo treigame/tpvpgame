@@ -33,5 +33,39 @@
         <button id="attack">攻撃</button>
     </div>
     <script src="script.js"></script>
+    <div id="joystick-container">
+    <div id="joystick-base"></div>
+    <div id="joystick-handle"></div>
+</div>
+
+<style>
+    /* ジョイスティックを画面に固定するためのスタイル */
+    #joystick-container {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        width: 150px;
+        height: 150px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    #joystick-base {
+        width: 100px;
+        height: 100px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+    }
+    #joystick-handle {
+        width: 50px;
+        height: 50px;
+        background: #fff;
+        border-radius: 50%;
+        position: absolute;
+        cursor: grab;
+    }
+</style>
 </body>
 </html>
