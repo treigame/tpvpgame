@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 
 // WebSocketサーバーをポート10000で起動
-const wss = new WebSocket.Server({ port: 10000 });
+const wss = new WebSocket.Server({ port: process.env.PORT || 10000 });
 
 // プレイヤー情報を格納するオブジェクト
 let players = {};
