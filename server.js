@@ -9,10 +9,9 @@ const wss = new WebSocket.Server({ server });
 
 let players = {};
 let playerCounter = 0;
-let orbs = []; // 虹色の球の配列
-const ORB_COUNT = 50; // マップ上の球の数
+let orbs = [];
+const ORB_COUNT = 50;
 
-// クライアントの静的ファイルをホスティング
 app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
@@ -26,7 +25,6 @@ function broadcast(message) {
     });
 }
 
-// マップに球を生成
 function generateOrbs() {
     orbs = [];
     for (let i = 0; i < ORB_COUNT; i++) {
@@ -49,7 +47,6 @@ setInterval(() => {
     });
 }, 2000);
 
-// WebSocket接続処理
 wss.on('connection', ws => {
     const id = `player_${playerCounter++}`;
     players[id] = { id: id, x: 100, y: 100, body: [], hp: 100, length: 10 };
@@ -64,6 +61,7 @@ wss.on('connection', ws => {
             const player = players[data.id];
             
             if (data.type === 'move' && player) {
+                // サーバー側でプレイヤーの状態を更新する
                 player.x = data.x;
                 player.y = data.y;
                 player.body = data.body;
@@ -73,8 +71,7 @@ wss.on('connection', ws => {
                     if (otherId === data.id) continue;
                     
                     const otherPlayer = players[otherId];
-                    // 相手の頭と自分の体の衝突判定
-                    if (otherPlayer.body.length > 5) { // 自分の体が十分に長くないと衝突判定をしない
+                    if (otherPlayer.body.length > 5) {
                          for(let i = 5; i < otherPlayer.body.length; i++) {
                              const segment = otherPlayer.body[i];
                              const dist = Math.sqrt(
@@ -82,10 +79,8 @@ wss.on('connection', ws => {
                                  Math.pow(player.y - segment.y, 2)
                              );
                              if (dist < 10) {
-                                 // 衝突した！
                                  console.log(`Player ${data.id} died by Player ${otherId}.`);
                                  
-                                 // 死亡時に球をドロップ
                                  if (player.body.length > 10) {
                                     for(let j = 0; j < player.length / 5; j++) {
                                        orbs.push({
@@ -97,7 +92,6 @@ wss.on('connection', ws => {
                                     }
                                  }
 
-                                 // プレイヤーを初期位置にリスポーン
                                  player.x = 100 + Math.random() * 50;
                                  player.y = 100 + Math.random() * 50;
                                  player.body = [];
@@ -122,19 +116,9 @@ wss.on('connection', ws => {
                     if (dist < 10) {
                         player.length += 1;
                         orbs.splice(i, 1);
-                        // クライアントに球が消えたことを通知
                         broadcast({ type: 'orb_eaten', id: data.id, orbId: orb.id });
                     }
                 }
-
-                // 体の更新
-                player.body.push({ x: player.x, y: player.y });
-                while (player.body.length > player.length) {
-                    player.body.shift();
-                }
-
-                broadcast({ type: 'move', id: data.id, x: player.x, y: player.y, body: player.body, length: player.length });
-
             }
         } catch (error) {
             console.error('メッセージの解析に失敗しました:', error);

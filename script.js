@@ -10,7 +10,7 @@ let orbs = [];
 let myId = null;
 let lastMove = {};
 let lastSendTime = 0;
-const sendInterval = 50; // 通信間隔を短くしてスムーズに
+const sendInterval = 20; // 通信間隔を短縮
 const PLAYER_SPEED = 5;
 const PLAYER_RADIUS = 15;
 
@@ -61,7 +61,8 @@ ws.onmessage = event => {
             players[data.id].length = 10;
         }
     } else if (data.type === 'move') {
-        if (players[data.id]) {
+        // 他のプレイヤーの動きを同期
+        if (players[data.id] && data.id !== myId) {
             players[data.id].x = data.x;
             players[data.id].y = data.y;
             players[data.id].body = data.body;
@@ -107,8 +108,8 @@ function gameLoop() {
 
     for (let id in players) {
         const player = players[id];
-
-        // マウスの座標に向かってプレイヤーを移動
+        
+        // 自分のプレイヤーの移動ロジック
         if (id === myId && targetX !== null && targetY !== null) {
             const dx = targetX - player.x;
             const dy = targetY - player.y;
@@ -119,7 +120,7 @@ function gameLoop() {
                 player.x += Math.cos(angle) * PLAYER_SPEED;
                 player.y += Math.sin(angle) * PLAYER_SPEED;
 
-                // 自分の体を更新
+                // 自分の体をクライアント側で更新
                 player.body.push({ x: player.x, y: player.y });
                 while (player.body.length > player.length) {
                     player.body.shift();
