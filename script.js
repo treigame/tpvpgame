@@ -3,20 +3,19 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// 💡 サーバーのURLを正しく指定してください
-const ws = new WebSocket('wss://tpvpgame-2.onrender.com/');
+// 💡 サーバーのURLを必ずあなたのものに合わせる
+const ws = new WebSocket('wss://tpvpgame-2.onrender.com/'); 
 
 let players = {};
 let myId = null;
 let lastMove = {};
 let lastSendTime = 0;
-const sendInterval = 100; // 100ミリ秒ごとに送信
+const sendInterval = 100;
 
-// 物理定数
 const GRAVITY = 0.5;
 const JUMP_POWER = -15;
 const PLAYER_RADIUS = 15;
-const GROUND_Y = canvas.height - 50; // 地面のY座標
+const GROUND_Y = canvas.height - 50;
 
 ws.onmessage = event => {
     const data = JSON.parse(event.data);
@@ -46,24 +45,19 @@ ws.onmessage = event => {
 
 document.addEventListener('keydown', e => {
     if (myId === null || !players[myId]) return;
-
     let moveX = 0;
     let myPlayer = players[myId];
-
     if (e.key === 'a') moveX = -5;
     if (e.key === 'd') moveX = 5;
-
     if (e.key === 'w' || e.key === 'W') {
         if (myPlayer.onGround) {
             myPlayer.dy = JUMP_POWER;
             myPlayer.onGround = false;
         }
     }
-    
     if (e.key === ' ') {
         attackNearestPlayer();
     }
-
     if (moveX !== 0) {
         myPlayer.x += moveX;
         ws.send(JSON.stringify({
@@ -114,7 +108,6 @@ function attackNearestPlayer() {
     let nearestPlayerId = null;
     let minDistance = Infinity;
     if (!players[myId]) return;
-
     for (let id in players) {
         if (id != myId) {
             const distance = Math.sqrt(
@@ -134,16 +127,12 @@ function attackNearestPlayer() {
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
     ctx.fillStyle = '#4a2c09';
     ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
-
     for (let id in players) {
         const player = players[id];
-
         player.dy += GRAVITY;
         player.y += player.dy;
-
         if (player.y + PLAYER_RADIUS >= GROUND_Y) {
             player.y = GROUND_Y - PLAYER_RADIUS;
             player.dy = 0;
@@ -151,7 +140,6 @@ function gameLoop() {
         } else {
             player.onGround = false;
         }
-
         if (id === myId && (Date.now() - lastSendTime > sendInterval || player.onGround)) {
             const currentMove = { x: player.x, y: player.y };
             if (JSON.stringify(currentMove) !== JSON.stringify(lastMove)) {
@@ -165,13 +153,11 @@ function gameLoop() {
                 lastSendTime = Date.now();
             }
         }
-
         ctx.beginPath();
         ctx.arc(player.x, player.y, PLAYER_RADIUS, 0, Math.PI * 2);
         ctx.fillStyle = (id === myId) ? 'blue' : 'red';
         ctx.fill();
         ctx.closePath();
-
         ctx.beginPath();
         ctx.arc(player.x + 5, player.y - 5, 5, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
@@ -182,7 +168,6 @@ function gameLoop() {
         ctx.fillStyle = '#000';
         ctx.fill();
         ctx.closePath();
-        
         ctx.fillStyle = 'black';
         ctx.fillRect(player.x - 15, player.y - 30, 30, 5);
         ctx.fillStyle = 'lime';

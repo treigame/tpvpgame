@@ -17,15 +17,12 @@ wss.on('connection', ws => {
     const id = `player_${playerCounter++}`;
     players[id] = { id: id, x: 100, y: 100, hp: 100 };
     console.log(`新しいプレイヤーが接続しました: ${id}`);
-
     ws.send(JSON.stringify({ type: 'init', id: id, players: players }));
     broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
-
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
             const player = players[data.id];
-
             if (data.type === 'move' && player) {
                 player.x = data.x;
                 player.y = data.y;
@@ -33,22 +30,20 @@ wss.on('connection', ws => {
             } else if (data.type === 'attack') {
                 const targetId = data.targetId;
                 const attackerId = data.attackerId;
-
                 if (players[targetId] && players[attackerId]) {
                     const attacker = players[attackerId];
                     const target = players[targetId];
-
                     const dist = Math.sqrt(
                         Math.pow(attacker.x - target.x, 2) + 
                         Math.pow(attacker.y - target.y, 2)
                     );
-
                     if (dist < 50) {
                         target.hp -= 10;
-
+                        console.log(`Player ${attackerId} attacked Player ${targetId}. HP: ${target.hp}`);
                         if (target.hp <= 0) {
                             delete players[targetId];
                             broadcast({ type: 'player_died', id: targetId });
+                            console.log(`Player ${targetId} died.`);
                         } else {
                             broadcast({ type: 'hp_update', id: targetId, hp: target.hp });
                         }
@@ -59,7 +54,6 @@ wss.on('connection', ws => {
             console.error('メッセージの解析に失敗しました:', error);
         }
     });
-
     ws.on('close', () => {
         console.log(`プレイヤーが切断しました: ${id}`);
         delete players[id];
