@@ -1,8 +1,10 @@
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: process.env.PORT || 10000 });
+const port = process.env.PORT || 10000; // 環境変数があればそれを使用、なければ10000を使用
+const wss = new WebSocket.Server({ port });
 
 let players = {};
 let playerCounter = 0;
+// ...以降のコードは変更なし
 
 function broadcast(message) {
     const jsonMessage = JSON.stringify(message);

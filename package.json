@@ -14,5 +14,14 @@
     "socket.io": "^4.8.1",
     "ws": "^8.18.3"
   },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/treigame/tpvpgame.git"
+  },
+  "bugs": {
+    "url": "https://github.com/treigame/tpvpgame/issues"
+  },
+  "homepage": "https://github.com/treigame/tpvpgame#readme",
   "description": ""
 }
