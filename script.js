@@ -26,6 +26,7 @@ ws.onmessage = event => {
             players[playerId] = { ...data.players[playerId], dy: 0, onGround: false };
         }
     } else if (data.type === 'player_update') {
+        // 新規プレイヤーまたは個別のプレイヤー更新
         if (!players[data.id]) {
             players[data.id] = { x: data.x, y: data.y, hp: data.hp, dy: 0, onGround: false };
         } else {
@@ -33,6 +34,27 @@ ws.onmessage = event => {
             players[data.id].y = data.y;
             players[data.id].hp = data.hp;
         }
+    } else if (data.type === 'all_player_update') {
+        // === 追加するコード ===
+        // 全プレイヤーの情報をサーバーの状態と同期
+        // 現在存在しないプレイヤーを新たに追加
+        for (const id in data.players) {
+            if (!players[id]) {
+                players[id] = { ...data.players[id], dy: 0, onGround: false };
+            }
+        }
+        // 位置とHPを更新
+        for (const id in players) {
+            if (data.players[id]) {
+                players[id].x = data.players[id].x;
+                players[id].y = data.players[id].y;
+                players[id].hp = data.players[id].hp;
+            } else if (id !== myId) {
+                // サーバーに存在しないプレイヤーは削除
+                delete players[id];
+            }
+        }
+        // ====================
     } else if (data.type === 'remove_player') {
         delete players[data.id];
     } else if (data.type === 'hp_update') {
@@ -89,7 +111,7 @@ document.getElementById('move-right').addEventListener('click', () => {
             type: 'move',
             id: myId,
             x: players[myId].x,
-            y: players[myId].y
+            y: players[id].y
         }));
     }
 });

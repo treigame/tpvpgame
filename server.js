@@ -25,6 +25,16 @@ function broadcast(message) {
     });
 }
 
+// === 追加するコード ===
+// 2秒ごとに全プレイヤーの状態をブロードキャスト
+setInterval(() => {
+    broadcast({
+        type: 'all_player_update',
+        players: players
+    });
+}, 2000); // 2000ミリ秒 = 2秒
+// ====================
+
 // WebSocket接続処理
 wss.on('connection', ws => {
     const id = `player_${playerCounter++}`;
@@ -35,7 +45,6 @@ wss.on('connection', ws => {
     ws.send(JSON.stringify({ type: 'init', id: id, players: players }));
 
     // 2. 既存の全プレイヤーに、新しいプレイヤーの参加を通知
-    // ただし、自分自身は含まないようにフィルター
     broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
     
     ws.on('message', message => {
