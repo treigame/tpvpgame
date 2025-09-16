@@ -4,29 +4,34 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// WebSocket接続URLを動的に取得
 const ws = new WebSocket(`wss://${window.location.host}`);
 let players = {};
 let myId = null;
 let lastMove = {};
 let lastSendTime = 0;
 const sendInterval = 100;
+const PLAYER_SPEED = 5; // プレイヤーの移動速度
 
 const GRAVITY = 0.5;
 const JUMP_POWER = -15;
 const PLAYER_RADIUS = 15;
 const GROUND_Y = canvas.height - 50;
 
+let targetX = null;
+let targetY = null;
+
+// 背景を黒にするため、地面の描画を削除
+// ctx.fillStyle = '#4a2c09';
+// ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
 ws.onmessage = event => {
     const data = JSON.parse(event.data);
     if (data.type === 'init') {
         myId = data.id;
-        // 既存の全プレイヤー情報を初期化
         for (const playerId in data.players) {
             players[playerId] = { ...data.players[playerId], dy: 0, onGround: false };
         }
     } else if (data.type === 'player_update') {
-        // 新規プレイヤーまたは個別のプレイヤー更新
         if (!players[data.id]) {
             players[data.id] = { x: data.x, y: data.y, hp: data.hp, dy: 0, onGround: false };
         } else {
@@ -35,26 +40,20 @@ ws.onmessage = event => {
             players[data.id].hp = data.hp;
         }
     } else if (data.type === 'all_player_update') {
-        // === 追加するコード ===
-        // 全プレイヤーの情報をサーバーの状態と同期
-        // 現在存在しないプレイヤーを新たに追加
         for (const id in data.players) {
             if (!players[id]) {
                 players[id] = { ...data.players[id], dy: 0, onGround: false };
             }
         }
-        // 位置とHPを更新
         for (const id in players) {
             if (data.players[id]) {
                 players[id].x = data.players[id].x;
                 players[id].y = data.players[id].y;
                 players[id].hp = data.players[id].hp;
             } else if (id !== myId) {
-                // サーバーに存在しないプレイヤーは削除
                 delete players[id];
             }
         }
-        // ====================
     } else if (data.type === 'remove_player') {
         delete players[data.id];
     } else if (data.type === 'hp_update') {
@@ -66,66 +65,30 @@ ws.onmessage = event => {
     }
 };
 
-document.addEventListener('keydown', e => {
-    if (myId === null || !players[myId]) return;
-    let moveX = 0;
-    let myPlayer = players[myId];
-    if (e.key === 'a') moveX = -5;
-    if (e.key === 'd') moveX = 5;
-    if (e.key === 'w' || e.key === 'W') {
-        if (myPlayer.onGround) {
-            myPlayer.dy = JUMP_POWER;
-            myPlayer.onGround = false;
-        }
-    }
-    if (e.key === ' ') {
-        attackNearestPlayer();
-    }
-    if (moveX !== 0) {
-        myPlayer.x += moveX;
-        ws.send(JSON.stringify({
-            type: 'move',
-            id: myId,
-            x: myPlayer.x,
-            y: myPlayer.y
-        }));
-    }
+// キーボード操作を削除
+// document.addEventListener('keydown', ...);
+
+// クリック/タップで移動先を設定
+document.addEventListener('mousedown', e => {
+    targetX = e.clientX;
+    targetY = e.clientY;
+});
+document.addEventListener('touchstart', e => {
+    targetX = e.touches[0].clientX;
+    targetY = e.touches[0].clientY;
+});
+document.addEventListener('mouseup', () => {
+    targetX = null;
+    targetY = null;
+});
+document.addEventListener('touchend', () => {
+    targetX = null;
+    targetY = null;
 });
 
-document.getElementById('move-left').addEventListener('click', () => {
-    if (myId !== null && players[myId]) {
-        players[myId].x -= 5;
-        ws.send(JSON.stringify({
-            type: 'move',
-            id: myId,
-            x: players[myId].x,
-            y: players[myId].y
-        }));
-    }
-});
-
-document.getElementById('move-right').addEventListener('click', () => {
-    if (myId !== null && players[myId]) {
-        players[myId].x += 5;
-        ws.send(JSON.stringify({
-            type: 'move',
-            id: myId,
-            x: players[myId].x,
-            y: players[id].y
-        }));
-    }
-});
-
-document.getElementById('move-up').addEventListener('click', () => {
-    if (myId !== null && players[myId] && players[myId].onGround) {
-        players[myId].dy = JUMP_POWER;
-        players[myId].onGround = false;
-    }
-});
-
-document.getElementById('attack').addEventListener('click', () => {
-    attackNearestPlayer();
-});
+// ボタン操作を削除
+// document.getElementById('move-left').addEventListener('click', ...);
+// ...
 
 function attackNearestPlayer() {
     let nearestPlayerId = null;
@@ -150,28 +113,34 @@ function attackNearestPlayer() {
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#4a2c09';
-    ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+    
+    // 背景を黒にする
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (let id in players) {
         const player = players[id];
 
-        // プレイヤーの移動と重力の適用
-        player.dy += GRAVITY;
-        player.y += player.dy;
+        // 地面と重力のロジックを削除
+        // player.dy += GRAVITY;
+        // player.y += player.dy;
+        // if (player.y + PLAYER_RADIUS >= GROUND_Y) { ... }
 
-        // 地面との衝突判定
-        if (player.y + PLAYER_RADIUS >= GROUND_Y) {
-            player.y = GROUND_Y - PLAYER_RADIUS;
-            player.dy = 0;
-            player.onGround = true;
-        } else {
-            player.onGround = false;
+        // マウスの座標に向かってプレイヤーを移動
+        if (id === myId && targetX !== null && targetY !== null) {
+            const dx = targetX - player.x;
+            const dy = targetY - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > PLAYER_RADIUS) {
+                const angle = Math.atan2(dy, dx);
+                player.x += Math.cos(angle) * PLAYER_SPEED;
+                player.y += Math.sin(angle) * PLAYER_SPEED;
+            }
         }
 
         // 自身のプレイヤーの状態をサーバーに送信
-        if (id === myId && (Date.now() - lastSendTime > sendInterval || player.onGround)) {
+        if (id === myId && (Date.now() - lastSendTime > sendInterval)) {
             const currentMove = { x: player.x, y: player.y };
             if (JSON.stringify(currentMove) !== JSON.stringify(lastMove)) {
                 ws.send(JSON.stringify({

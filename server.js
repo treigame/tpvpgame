@@ -32,7 +32,7 @@ setInterval(() => {
         type: 'all_player_update',
         players: players
     });
-}, 2000); // 2000ミリ秒 = 2秒
+}, 1000); // 2000ミリ秒 = 2秒
 // ====================
 
 // WebSocket接続処理
