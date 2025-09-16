@@ -1,11 +1,11 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// 💡 サーバーのURLを必ずあなたのものに合わせる
+// WebSocket接続URLを動的に取得
 const ws = new WebSocket(`wss://${window.location.host}`);
-
 let players = {};
 let myId = null;
 let lastMove = {};
@@ -21,6 +21,7 @@ ws.onmessage = event => {
     const data = JSON.parse(event.data);
     if (data.type === 'init') {
         myId = data.id;
+        // 既存の全プレイヤー情報を初期化
         for (const playerId in data.players) {
             players[playerId] = { ...data.players[playerId], dy: 0, onGround: false };
         }
@@ -127,12 +128,18 @@ function attackNearestPlayer() {
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     ctx.fillStyle = '#4a2c09';
     ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
     for (let id in players) {
         const player = players[id];
+
+        // プレイヤーの移動と重力の適用
         player.dy += GRAVITY;
         player.y += player.dy;
+
+        // 地面との衝突判定
         if (player.y + PLAYER_RADIUS >= GROUND_Y) {
             player.y = GROUND_Y - PLAYER_RADIUS;
             player.dy = 0;
@@ -140,6 +147,8 @@ function gameLoop() {
         } else {
             player.onGround = false;
         }
+
+        // 自身のプレイヤーの状態をサーバーに送信
         if (id === myId && (Date.now() - lastSendTime > sendInterval || player.onGround)) {
             const currentMove = { x: player.x, y: player.y };
             if (JSON.stringify(currentMove) !== JSON.stringify(lastMove)) {
@@ -153,26 +162,34 @@ function gameLoop() {
                 lastSendTime = Date.now();
             }
         }
+
+        // プレイヤーの描画
         ctx.beginPath();
         ctx.arc(player.x, player.y, PLAYER_RADIUS, 0, Math.PI * 2);
         ctx.fillStyle = (id === myId) ? 'blue' : 'red';
         ctx.fill();
         ctx.closePath();
+
+        // 目の描画
         ctx.beginPath();
         ctx.arc(player.x + 5, player.y - 5, 5, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
         ctx.fill();
         ctx.closePath();
+
         ctx.beginPath();
         ctx.arc(player.x + 5, player.y - 5, 2, 0, Math.PI * 2);
         ctx.fillStyle = '#000';
         ctx.fill();
         ctx.closePath();
+
+        // HPバーの描画
         ctx.fillStyle = 'black';
         ctx.fillRect(player.x - 15, player.y - 30, 30, 5);
         ctx.fillStyle = 'lime';
         ctx.fillRect(player.x - 15, player.y - 30, (player.hp / 100) * 30, 5);
     }
+
     requestAnimationFrame(gameLoop);
 }
 

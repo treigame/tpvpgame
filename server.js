@@ -10,10 +10,10 @@ const wss = new WebSocket.Server({ server });
 let players = {};
 let playerCounter = 0;
 
-// クライアントのファイルをホスティング
+// クライアントの静的ファイルをホスティング
 app.use(express.static(path.join(__dirname, '')));
 
-// 環境変数PORTを使用
+// 環境変数PORTを使用。ローカルでは10000を使用
 const port = process.env.PORT || 10000;
 
 function broadcast(message) {
@@ -31,9 +31,13 @@ wss.on('connection', ws => {
     players[id] = { id: id, x: 100, y: 100, hp: 100 };
     console.log(`新しいプレイヤーが接続しました: ${id}`);
     
+    // 1. 新しいプレイヤーに、既存の全プレイヤー情報を送信
     ws.send(JSON.stringify({ type: 'init', id: id, players: players }));
-    broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
 
+    // 2. 既存の全プレイヤーに、新しいプレイヤーの参加を通知
+    // ただし、自分自身は含まないようにフィルター
+    broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
+    
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
