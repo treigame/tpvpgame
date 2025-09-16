@@ -4,7 +4,7 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 // 💡 サーバーのURLを必ずあなたのものに合わせる
-const ws = new WebSocket('wss://tpvpgame-2.onrender.comnpm install express ws'); 
+const ws = new WebSocket(`wss://${window.location.host}`);
 
 let players = {};
 let myId = null;
