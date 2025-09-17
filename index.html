@@ -3,25 +3,50 @@
 <head>
     <title>Multiplayer Game</title>
     <style>
-        /* 背景色を黒に変更 */
-        body { margin: 0; overflow: hidden; background-color: #000; }
-        #controls {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            display: flex;
-            gap: 10px;
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
+        #login-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+        }
+        #login-container h1 {
+            color: #fff;
+        }
+        #login-container input {
+            display: block;
+            margin: 10px auto;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+        }
+        #login-container button {
+            padding: 10px 20px;
+            border: none;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #gameCanvas {
+            display: none; /* 最初は非表示 */
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    <div id="controls">
-        <button id="move-left">左へ</button>
-        <button id="move-right">右へ</button>
-        <button id="move-up">ジャンプ</button>
-        <button id="attack">攻撃</button>
+    <div id="login-container">
+        <h1>Welcome!</h1>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button id="play-button">Play</button>
     </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
     <script src="script.js"></script>
 </body>
 </html>
