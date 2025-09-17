@@ -47,64 +47,47 @@ showLoginLink.addEventListener('click', (e) => {
     loginContainer.style.display = 'block';
 });
 
-// ログインフォームの送信イベント
-loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const username = usernameInput.value;
-    const password = passwordInput.value;
-    
-    // 簡単なクライアント側認証
-    if (username.length > 0 && password.length > 0) {
-        // ログインフォームを非表示にし、キャンバスを表示
-        loginContainer.style.display = 'none';
-        canvas.style.display = 'block';
-        
-        // WebSocket接続を開始
-        ws = new WebSocket(`wss://${window.location.host}`);
-        
-        // ユーザー情報をサーバーに送信（サーバー側の処理はまだありません）
-        ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'login', username: username }));
-        });
-        
-        setupWebSocketEvents();
-        gameLoop();
-    } else {
-        alert('Please enter a username and password.');
-    }
-});
-
-// 登録フォームの送信イベント
-signupForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const username = signupUsernameInput.value;
-    const password = signupPasswordInput.value;
-    const confirmPassword = confirmPasswordInput.value;
-
-    if (password !== confirmPassword) {
-        alert('Passwords do not match.');
-        return;
-    }
-    
-    // 簡単なクライアント側認証
-    if (username.length > 0 && password.length > 0) {
-        // サーバーに登録情報を送信（サーバー側の処理はまだありません）
-        alert('Registration successful! Please log in.'); // 実際にはサーバーからの応答を待つべき
-        
-        // 登録後にログインフォームに戻る
-        signupContainer.style.display = 'none';
-        loginContainer.style.display = 'block';
-    } else {
-        alert('Please enter a username and password.');
-    }
-});
+// WebSocket接続を開始する関数
+function startWebSocketConnection() {
+    ws = new WebSocket(`wss://${window.location.host}`);
+    setupWebSocketEvents();
+}
 
 // WebSocketイベントリスナーをセットアップする関数
 function setupWebSocketEvents() {
     ws.onmessage = event => {
         const data = JSON.parse(event.data);
-        if (data.type === 'init') {
-            myId = data.id;
+        
+        // ログイン応答の処理
+        if (data.type === 'login_response') {
+            if (data.success) {
+                myId = data.id;
+                // ログインフォームを非表示にし、ゲームを開始
+                loginContainer.style.display = 'none';
+                canvas.style.display = 'block';
+                // ゲームループを開始
+                if (!window.gameLoopRunning) {
+                    window.gameLoopRunning = true;
+                    gameLoop();
+                }
+            } else {
+                alert(data.message);
+            }
+        }
+        
+        // 登録応答の処理
+        else if (data.type === 'signup_response') {
+            alert(data.message);
+            if (data.success) {
+                // 登録成功後、ログインフォームに戻る
+                signupContainer.style.display = 'none';
+                loginContainer.style.display = 'block';
+            }
+        }
+        
+        // 既存のゲームロジック
+        else if (data.type === 'init') {
+            // このメッセージはログイン後に受け取る
             for (const playerId in data.players) {
                 players[playerId] = { ...data.players[playerId], body: data.players[playerId].body || [] };
             }
@@ -156,21 +139,67 @@ function setupWebSocketEvents() {
     };
 }
 
+// ログインフォームの送信イベント
+loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const username = usernameInput.value;
+    const password = passwordInput.value;
+    
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        startWebSocketConnection();
+        ws.addEventListener('open', () => {
+            ws.send(JSON.stringify({ type: 'login', username: username, password: password }));
+        });
+    } else {
+        ws.send(JSON.stringify({ type: 'login', username: username, password: password }));
+    }
+});
+
+// 登録フォームの送信イベント
+signupForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const username = signupUsernameInput.value;
+    const password = signupPasswordInput.value;
+    const confirmPassword = confirmPasswordInput.value;
+
+    if (password !== confirmPassword) {
+        alert('Passwords do not match.');
+        return;
+    }
+    
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        startWebSocketConnection();
+        ws.addEventListener('open', () => {
+            ws.send(JSON.stringify({ type: 'signup', username: username, password: password }));
+        });
+    } else {
+        ws.send(JSON.stringify({ type: 'signup', username: username, password: password }));
+    }
+});
+
 document.addEventListener('mousedown', e => {
-    targetX = e.clientX;
-    targetY = e.clientY;
+    if (myId) {
+        targetX = e.clientX;
+        targetY = e.clientY;
+    }
 });
 document.addEventListener('touchstart', e => {
-    targetX = e.touches[0].clientX;
-    targetY = e.touches[0].clientY;
+    if (myId) {
+        targetX = e.touches[0].clientX;
+        targetY = e.touches[0].clientY;
+    }
 });
 document.addEventListener('mouseup', () => {
-    targetX = null;
-    targetY = null;
+    if (myId) {
+        targetX = null;
+        targetY = null;
+    }
 });
 document.addEventListener('touchend', () => {
-    targetX = null;
-    targetY = null;
+    if (myId) {
+        targetX = null;
+        targetY = null;
+    }
 });
 
 function gameLoop() {
