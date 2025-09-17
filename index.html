@@ -4,7 +4,7 @@
     <title>Multiplayer Game</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
-        #login-container {
+        #login-container, #signup-container {
             position: absolute;
             top: 50%;
             left: 50%;
@@ -13,18 +13,19 @@
             padding: 20px;
             background-color: rgba(0, 0, 0, 0.7);
             border-radius: 10px;
+            display: none; /* 初期は両方非表示 */
         }
-        #login-container h1 {
+        #login-container h1, #signup-container h1 {
             color: #fff;
         }
-        #login-container input {
+        #login-container input, #signup-container input {
             display: block;
             margin: 10px auto;
             padding: 10px;
             border: none;
             border-radius: 5px;
         }
-        #login-container button {
+        #login-container button, #signup-container button {
             padding: 10px 20px;
             border: none;
             background-color: #007bff;
@@ -32,19 +33,39 @@
             border-radius: 5px;
             cursor: pointer;
         }
+        #signup-container {
+            display: none; /* 登録フォームは最初は非表示 */
+        }
         #gameCanvas {
             display: none; /* 最初は非表示 */
+        }
+        #login-form {
+            display: block; /* ログインフォームは最初に表示 */
         }
     </style>
 </head>
 <body>
     <div id="login-container">
         <h1>Welcome!</h1>
-        <input type="text" id="username" placeholder="Username">
-        <input type="password" id="password" placeholder="Password">
-        <button id="play-button">Play</button>
+        <form id="login-form">
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+            <button type="submit" id="play-button">Play</button>
+        </form>
+        <p>New? <a href="#" id="show-signup">Sign up!</a></p>
     </div>
     
+    <div id="signup-container">
+        <h1>Sign Up</h1>
+        <form id="signup-form">
+            <input type="text" id="signup-username" placeholder="Username">
+            <input type="password" id="signup-password" placeholder="Password">
+            <input type="password" id="confirm-password" placeholder="Confirm Password">
+            <button type="submit" id="signup-button">Sign Up</button>
+        </form>
+        <p>Already have an account? <a href="#" id="show-login">Log in</a></p>
+    </div>
+
     <canvas id="gameCanvas"></canvas>
     
     <script src="script.js"></script>

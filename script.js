@@ -2,9 +2,20 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 const loginContainer = document.getElementById('login-container');
-const playButton = document.getElementById('play-button');
+const signupContainer = document.getElementById('signup-container');
+
+const loginForm = document.getElementById('login-form');
+const signupForm = document.getElementById('signup-form');
+
+const showSignupLink = document.getElementById('show-signup');
+const showLoginLink = document.getElementById('show-login');
+
 const usernameInput = document.getElementById('username');
 const passwordInput = document.getElementById('password');
+
+const signupUsernameInput = document.getElementById('signup-username');
+const signupPasswordInput = document.getElementById('signup-password');
+const confirmPasswordInput = document.getElementById('confirm-password');
 
 let ws = null;
 let players = {};
@@ -19,8 +30,26 @@ const PLAYER_RADIUS = 15;
 let targetX = null;
 let targetY = null;
 
-// 「Play」ボタンのクリックイベント
-playButton.addEventListener('click', () => {
+// ページ読み込み時にログインフォームを表示
+loginContainer.style.display = 'block';
+
+// 「Sign up!」リンクをクリックしたときの処理
+showSignupLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    loginContainer.style.display = 'none';
+    signupContainer.style.display = 'block';
+});
+
+// 「Log in」リンクをクリックしたときの処理
+showLoginLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    signupContainer.style.display = 'none';
+    loginContainer.style.display = 'block';
+});
+
+// ログインフォームの送信イベント
+loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
     const username = usernameInput.value;
     const password = passwordInput.value;
     
@@ -33,13 +62,38 @@ playButton.addEventListener('click', () => {
         // WebSocket接続を開始
         ws = new WebSocket(`wss://${window.location.host}`);
         
-        // ユーザー情報をサーバーに送信（まだサーバー側に処理はありません）
+        // ユーザー情報をサーバーに送信（サーバー側の処理はまだありません）
         ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ type: 'login', username: username }));
         });
         
         setupWebSocketEvents();
         gameLoop();
+    } else {
+        alert('Please enter a username and password.');
+    }
+});
+
+// 登録フォームの送信イベント
+signupForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const username = signupUsernameInput.value;
+    const password = signupPasswordInput.value;
+    const confirmPassword = confirmPasswordInput.value;
+
+    if (password !== confirmPassword) {
+        alert('Passwords do not match.');
+        return;
+    }
+    
+    // 簡単なクライアント側認証
+    if (username.length > 0 && password.length > 0) {
+        // サーバーに登録情報を送信（サーバー側の処理はまだありません）
+        alert('Registration successful! Please log in.'); // 実際にはサーバーからの応答を待つべき
+        
+        // 登録後にログインフォームに戻る
+        signupContainer.style.display = 'none';
+        loginContainer.style.display = 'block';
     } else {
         alert('Please enter a username and password.');
     }
@@ -120,13 +174,17 @@ document.addEventListener('touchend', () => {
 });
 
 function gameLoop() {
+    if (loginContainer.style.display !== 'none' || signupContainer.style.display !== 'none') {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (ws && ws.readyState === WebSocket.OPEN) {
-        // 球を描画
         orbs.forEach(orb => {
             ctx.beginPath();
             ctx.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
@@ -185,6 +243,3 @@ function gameLoop() {
     
     requestAnimationFrame(gameLoop);
 }
-
-// ページ読み込み時にゲームループを開始
-// gameLoop();
