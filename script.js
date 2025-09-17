@@ -4,8 +4,6 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 // DOM要素の取得
 const overlay = document.getElementById('overlay');
 const container = document.body;
-const joystickContainer = document.getElementById('joystick-container');
-const joystickHandle = document.getElementById('joystick-handle');
 
 // WebSocket接続
 const ws = new WebSocket(`wss://${window.location.host}`);
@@ -158,110 +156,126 @@ let canJump = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
-// マウスがクリックされたらコントロールを有効にする
-overlay.addEventListener('click', () => {
-    controls.lock();
-});
+// タッチデバイス判定
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-// コントロールがロックされたらオーバーレイを非表示に
-controls.addEventListener('lock', () => {
-    overlay.style.display = 'none';
-});
+// PCとタブレットで異なる操作を定義
+if (isTouchDevice) {
+    overlay.textContent = "Touch to Play";
+    // タッチイベントでゲームを開始
+    container.addEventListener('touchstart', (e) => {
+        if (e.target === overlay) {
+            overlay.style.display = 'none';
+            container.requestPointerLock = container.requestPointerLock || container.mozRequestPointerLock;
+            container.requestFullscreen();
+        }
+    });
 
-// コントロールが解除されたらオーバーレイを表示
-controls.addEventListener('unlock', () => {
-    overlay.style.display = 'flex';
-});
-
-// ジョイスティック操作
-let isJoystickActive = false;
-let joystickStartX = 0;
-let joystickStartY = 0;
-
-joystickContainer.addEventListener('touchstart', (e) => {
-    isJoystickActive = true;
-    joystickStartX = e.touches[0].clientX;
-    joystickStartY = e.touches[0].clientY;
-    joystickHandle.style.transform = 'translate(0, 0)';
-});
-
-joystickContainer.addEventListener('touchmove', (e) => {
-    if (!isJoystickActive) return;
-    const touchX = e.touches[0].clientX;
-    const touchY = e.touches[0].clientY;
-    
-    const dx = touchX - joystickStartX;
-    const dy = touchY - joystickStartY;
-    
-    const distance = Math.min(joystickContainer.clientWidth / 2, Math.sqrt(dx * dx + dy * dy));
-    const angle = Math.atan2(dy, dx);
-
-    joystickHandle.style.transform = `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px)`;
-
-    // 移動方向を更新
-    moveForward = Math.abs(angle) > Math.PI * 0.75 || Math.abs(angle) < Math.PI * 0.25;
-    moveBackward = Math.abs(angle) < Math.PI * 0.75 && Math.abs(angle) > Math.PI * 0.25;
-    moveLeft = angle > 0 && angle < Math.PI;
-    moveRight = angle < 0 && angle > -Math.PI;
-
-    e.preventDefault();
-});
-
-joystickContainer.addEventListener('touchend', () => {
-    isJoystickActive = false;
-    joystickHandle.style.transform = 'translate(0, 0)';
-    moveForward = moveBackward = moveLeft = moveRight = false;
-});
-
-// タッチで視点変更（ジョイスティック以外）
-let isTouchLooking = false;
-let prevTouchX = 0;
-let prevTouchY = 0;
-
-container.addEventListener('touchstart', (e) => {
-    if (e.touches[0].target === joystickContainer || e.touches[0].target === joystickHandle) {
-        isTouchLooking = false;
-    } else {
+    // タッチで視点変更（縦横のみ）
+    let isTouchLooking = false;
+    let prevTouchX = 0;
+    let prevTouchY = 0;
+    container.addEventListener('touchstart', (e) => {
         isTouchLooking = true;
         prevTouchX = e.touches[0].clientX;
         prevTouchY = e.touches[0].clientY;
-    }
-});
+        e.preventDefault();
+    });
 
-container.addEventListener('touchmove', (e) => {
-    if (!isTouchLooking) return;
+    container.addEventListener('touchmove', (e) => {
+        if (!isTouchLooking) return;
+        
+        const touchX = e.touches[0].clientX;
+        const touchY = e.touches[0].clientY;
+
+        const dx = touchX - prevTouchX;
+        const dy = touchY - prevTouchY;
+
+        // 視点を回転させる (Y軸とX軸のみ)
+        controls.getObject().rotation.y -= dx * 0.005;
+        controls.getObject().rotation.x -= dy * 0.005;
+
+        // 視点の制限
+        const PI_2 = Math.PI / 2;
+        controls.getObject().rotation.x = Math.max(-PI_2, Math.min(PI_2, controls.getObject().rotation.x));
+        
+        prevTouchX = touchX;
+        prevTouchY = touchY;
+
+        e.preventDefault();
+    });
+
+    container.addEventListener('touchend', () => {
+        isTouchLooking = false;
+    });
+
+    // ジャンプ機能
+    container.addEventListener('touchend', (e) => {
+        if (canJump) {
+            velocity.y += 10;
+            canJump = false;
+        }
+    });
+
+    // タブレットではジョイスティックは使わないので、キーボード入力を模倣
+    // ここでは単純な移動だけを行う
+    // 実際にジョイスティックを実装する場合は、この部分を変更します
+    document.addEventListener('keydown', (event) => {
+        switch (event.code) {
+            case 'KeyW':
+            case 'KeyA':
+            case 'KeyS':
+            case 'KeyD':
+                // タッチデバイスではキーボードは使わない
+                break;
+        }
+    });
+} else {
+    // PC (マウスとキーボード)
+    overlay.textContent = "Click to Play";
+    overlay.addEventListener('click', () => {
+        controls.lock();
+    });
     
-    const touchX = e.touches[0].clientX;
-    const touchY = e.touches[0].clientY;
+    // キーボードイベント
+    document.addEventListener('keydown', (event) => {
+        switch (event.code) {
+            case 'KeyW':
+                moveForward = true;
+                break;
+            case 'KeyA':
+                moveRight = true;
+                break;
+            case 'KeyS':
+                moveBackward = true;
+                break;
+            case 'KeyD':
+                moveLeft = true;
+                break;
+            case 'Space':
+                if (canJump === true) velocity.y += 10;
+                canJump = false;
+                break;
+        }
+    });
 
-    const dx = touchX - prevTouchX;
-    const dy = touchY - prevTouchY;
-
-    // 視点を回転させる
-    controls.getObject().rotation.y -= dx * 0.005;
-    controls.getObject().rotation.x -= dy * 0.005;
-
-    // 視点の制限
-    const PI_2 = Math.PI / 2;
-    controls.getObject().rotation.x = Math.max(-PI_2, Math.min(PI_2, controls.getObject().rotation.x));
-    
-    prevTouchX = touchX;
-    prevTouchY = touchY;
-
-    e.preventDefault();
-});
-
-container.addEventListener('touchend', () => {
-    isTouchLooking = false;
-});
-
-// ジャンプ機能
-container.addEventListener('touchend', (e) => {
-    if (canJump && e.changedTouches[0].target !== joystickContainer && e.changedTouches[0].target !== joystickHandle) {
-        velocity.y += 10;
-        canJump = false;
-    }
-});
+    document.addEventListener('keyup', (event) => {
+        switch (event.code) {
+            case 'KeyW':
+                moveForward = false;
+                break;
+            case 'KeyA':
+                moveRight = false;
+                break;
+            case 'KeyS':
+                moveBackward = false;
+                break;
+            case 'KeyD':
+                moveLeft = false;
+                break;
+        }
+    });
+}
 
 // アニメーションループ
 let prevTime = performance.now();
@@ -311,4 +325,42 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// マウスクリックまたはタッチで鬼の交代をリクエスト
+const raycaster = new THREE.Raycaster();
+container.addEventListener('mousedown', (event) => {
+    // 鬼でなければ何もしない
+    if (myId !== oniId) return;
+
+    // ポインターがロックされている場合のみ処理
+    if (!controls.isLocked) return;
+    
+    // 画面中央からレイを飛ばす
+    const mouse = new THREE.Vector2(0, 0);
+    raycaster.setFromCamera(mouse, camera);
+    
+    const interactablePlayers = [];
+    for(const id in players) {
+        if(id !== myId) {
+            interactablePlayers.push(players[id]);
+        }
+    }
+    
+    const intersects = raycaster.intersectObjects(interactablePlayers);
+    
+    if (intersects.length > 0) {
+        const taggedPlayerMesh = intersects[0].object;
+        let taggedPlayerId = null;
+        for(const id in players) {
+            if (players[id] === taggedPlayerMesh) {
+                taggedPlayerId = id;
+                break;
+            }
+        }
+        
+        if (taggedPlayerId) {
+            ws.send(JSON.stringify({ type: 'tag_player', taggedId: taggedPlayerId }));
+        }
+    }
 });
