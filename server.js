@@ -79,6 +79,7 @@ wss.on('connection', ws => {
                     broadcast({ type: 'orb_eaten', orbId: data.orbId });
                 }
             } else if (data.type === 'tag_player') {
+                // 鬼がクリックしたプレイヤーに役割を渡す
                 if (data.id === oniId) {
                     oniId = data.taggedId;
                     broadcast({ type: 'oni_changed', oniId: oniId });

@@ -51,7 +51,6 @@ ws.onmessage = (event) => {
         }
     } else if (data.type === 'oni_changed') {
         oniId = data.oniId;
-        // 鬼の交代を視覚的に表現
         for (const id in players) {
             if (id === oniId) {
                 if (!players[id].sword) {
@@ -109,7 +108,10 @@ function addSword(playerMesh) {
     const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2);
     const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
     const sword = new THREE.Mesh(swordGeometry, swordMaterial);
-    sword.position.set(0, 0.5, -1);
+    
+    // プレイヤーから見て右側に配置
+    sword.position.set(1.5, 0.5, -1);
+    
     playerMesh.add(sword);
     playerMesh.sword = sword;
 }
@@ -120,16 +122,6 @@ function removeSword(playerMesh) {
         playerMesh.remove(playerMesh.sword);
         playerMesh.sword = null;
     }
-}
-
-// オーブメッシュ
-function createOrbMesh(id, data) {
-    const geometry = new THREE.SphereGeometry(0.5, 32, 32);
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(data.x, data.y, data.z);
-    scene.add(mesh);
-    orbs[id] = mesh;
 }
 
 // PointerLockControls（一人称視点）
@@ -167,13 +159,13 @@ document.addEventListener('keydown', (event) => {
             moveForward = true;
             break;
         case 'KeyA':
-            moveLeft = true;
+            moveRight = true; // 右へ移動
             break;
         case 'KeyW':
             moveBackward = true;
             break;
         case 'KeyD':
-            moveRight = true;
+            moveLeft = true; // 左へ移動
             break;
         case 'Space':
             if (canJump === true) velocity.y += 10;
@@ -188,13 +180,13 @@ document.addEventListener('keyup', (event) => {
             moveForward = false;
             break;
         case 'KeyA':
-            moveLeft = false;
+            moveRight = false;
             break;
         case 'KeyW':
             moveBackward = false;
             break;
         case 'KeyD':
-            moveRight = false;
+            moveLeft = false;
             break;
     }
 });
@@ -229,37 +221,12 @@ function animate() {
         canJump = true;
     }
 
-    // プレイヤーの位置をサーバーに送信
-    if (myId) {
-        const playerPosition = controls.getObject().position;
-        ws.send(JSON.stringify({
-            type: 'move',
-            id: myId,
-            x: playerPosition.x,
-            y: playerPosition.y,
-            z: playerPosition.z,
-        }));
-    }
-
     // オーブとの衝突判定
     for (const id in orbs) {
         const orb = orbs[id];
         const distance = controls.getObject().position.distanceTo(orb.position);
         if (distance < 1) {
             ws.send(JSON.stringify({ type: 'eat_orb', orbId: id }));
-        }
-    }
-
-    // 鬼ごっこ：鬼の判定
-    if (myId === oniId) {
-        for (const id in players) {
-            if (id === myId) continue;
-            const otherPlayer = players[id];
-            const distance = controls.getObject().position.distanceTo(otherPlayer.position);
-            if (distance < 2) {
-                // タッチしたらサーバーに通知
-                ws.send(JSON.stringify({ type: 'tag_player', taggedId: id }));
-            }
         }
     }
 
@@ -272,4 +239,45 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// マウスクリックまたはタッチで鬼の交代をリクエスト
+const raycaster = new THREE.Raycaster();
+container.addEventListener('click', (event) => {
+    // 鬼でなければ何もしない
+    if (myId !== oniId) return;
+
+    // ポインターがロックされている場合は処理しない
+    if (controls.isLocked) return;
+    
+    // マウス位置を正規化
+    const mouse = new THREE.Vector2();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    
+    raycaster.setFromCamera(mouse, camera);
+    
+    const interactablePlayers = [];
+    for(const id in players) {
+        if(id !== myId) {
+            interactablePlayers.push(players[id]);
+        }
+    }
+    
+    const intersects = raycaster.intersectObjects(interactablePlayers);
+    
+    if (intersects.length > 0) {
+        const taggedPlayerMesh = intersects[0].object;
+        let taggedPlayerId = null;
+        for(const id in players) {
+            if (players[id] === taggedPlayerMesh) {
+                taggedPlayerId = id;
+                break;
+            }
+        }
+        
+        if (taggedPlayerId) {
+            ws.send(JSON.stringify({ type: 'tag_player', taggedId: taggedPlayerId }));
+        }
+    }
 });
