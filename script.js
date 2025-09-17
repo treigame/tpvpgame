@@ -62,6 +62,15 @@ ws.onmessage = (event) => {
                 }
             }
         }
+        if (oniId === myId) {
+            if (!camera.sword) {
+                addSword(camera);
+            }
+        } else {
+            if (camera.sword) {
+                removeSword(camera);
+            }
+        }
     }
 };
 
@@ -104,24 +113,34 @@ function createPlayerMesh(id, data) {
 }
 
 // 剣を追加する関数
-function addSword(playerMesh) {
+function addSword(mesh) {
     const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2);
     const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
     const sword = new THREE.Mesh(swordGeometry, swordMaterial);
     
     // プレイヤーから見て右側に配置
-    sword.position.set(1.5, 0.5, -1);
+    sword.position.set(1.5, -0.5, -2);
     
-    playerMesh.add(sword);
-    playerMesh.sword = sword;
+    mesh.add(sword);
+    mesh.sword = sword;
 }
 
 // 剣を削除する関数
-function removeSword(playerMesh) {
-    if (playerMesh.sword) {
-        playerMesh.remove(playerMesh.sword);
-        playerMesh.sword = null;
+function removeSword(mesh) {
+    if (mesh.sword) {
+        mesh.remove(mesh.sword);
+        mesh.sword = null;
     }
+}
+
+// オーブメッシュ
+function createOrbMesh(id, data) {
+    const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(data.x, data.y, data.z);
+    scene.add(mesh);
+    orbs[id] = mesh;
 }
 
 // PointerLockControls（一人称視点）
@@ -243,18 +262,15 @@ window.addEventListener('resize', () => {
 
 // マウスクリックまたはタッチで鬼の交代をリクエスト
 const raycaster = new THREE.Raycaster();
-container.addEventListener('click', (event) => {
+container.addEventListener('mousedown', (event) => {
     // 鬼でなければ何もしない
     if (myId !== oniId) return;
 
-    // ポインターがロックされている場合は処理しない
-    if (controls.isLocked) return;
+    // ポインターがロックされている場合のみ処理
+    if (!controls.isLocked) return;
     
-    // マウス位置を正規化
-    const mouse = new THREE.Vector2();
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    
+    // 画面中央からレイを飛ばす
+    const mouse = new THREE.Vector2(0, 0);
     raycaster.setFromCamera(mouse, camera);
     
     const interactablePlayers = [];
