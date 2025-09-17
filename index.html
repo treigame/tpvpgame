@@ -18,21 +18,32 @@
             font-size: 2em;
             cursor: pointer;
         }
-        #crosshair {
+        #joystick-container {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 2rem;
-            color: #fff;
-            text-shadow: 0 0 5px black;
-            pointer-events: none; /* クリックイベントを透過させる */
+            bottom: 20px;
+            left: 20px;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #joystick-handle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.5);
+            touch-action: none;
         }
     </style>
 </head>
 <body>
     <div id="overlay">Click to Play</div>
-    <div id="crosshair">×</div>
+    <div id="joystick-container">
+        <div id="joystick-handle"></div>
+    </div>
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
