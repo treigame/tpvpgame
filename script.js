@@ -1,190 +1,89 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+import * as THREE from 'three';
 
-const loginContainer = document.getElementById('login-container');
-const playButton = document.getElementById('play-button');
-const usernameInput = document.getElementById('username');
-const passwordInput = document.getElementById('password');
+// シーン、カメラ、レンダラーのセットアップ
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-let ws = null;
-let players = {};
-let orbs = [];
-let myId = null;
-let lastMove = {};
-let lastSendTime = 0;
-const sendInterval = 20;
-const PLAYER_SPEED = 5;
-const PLAYER_RADIUS = 15;
+// 地面を作成
+const planeGeometry = new THREE.PlaneGeometry(100, 100);
+const planeMaterial = new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide });
+const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+plane.rotation.x = Math.PI / 2;
+scene.add(plane);
 
-let targetX = null;
-let targetY = null;
+// プレイヤー（青い球体）を作成
+const playerGeometry = new THREE.SphereGeometry(1, 32, 32);
+const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+const player = new THREE.Mesh(playerGeometry, playerMaterial);
+player.position.y = 1;
+scene.add(player);
 
-// 「Play」ボタンのクリックイベント
-playButton.addEventListener('click', () => {
-    const username = usernameInput.value;
-    const password = passwordInput.value;
-    
-    // 簡単なクライアント側認証
-    if (username.length > 0 && password.length > 0) {
-        // ログインフォームを非表示にし、キャンバスを表示
-        loginContainer.style.display = 'none';
-        canvas.style.display = 'block';
-        
-        // WebSocket接続を開始
-        ws = new WebSocket(`wss://${window.location.host}`);
-        
-        // ユーザー情報をサーバーに送信（まだサーバー側に処理はありません）
-        ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'login', username: username }));
-        });
-        
-        setupWebSocketEvents();
-        gameLoop();
-    } else {
-        alert('Please enter a username and password.');
-    }
-});
+// オーブ（赤い球体）を作成
+const orbs = [];
+const ORB_COUNT = 50;
+const orbGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+const orbMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 
-// WebSocketイベントリスナーをセットアップする関数
-function setupWebSocketEvents() {
-    ws.onmessage = event => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'init') {
-            myId = data.id;
-            for (const playerId in data.players) {
-                players[playerId] = { ...data.players[playerId], body: data.players[playerId].body || [] };
-            }
-            orbs = data.orbs || [];
-        } else if (data.type === 'player_update') {
-            if (!players[data.id]) {
-                players[data.id] = { x: data.x, y: data.y, hp: data.hp, body: [] };
-            } else {
-                players[data.id].x = data.x;
-                players[data.id].y = data.y;
-                players[data.id].hp = data.hp;
-            }
-        } else if (data.type === 'all_player_update') {
-            for (const id in data.players) {
-                if (!players[id]) {
-                    players[id] = { ...data.players[id], body: data.players[id].body || [] };
-                }
-            }
-            for (const id in players) {
-                if (data.players[id]) {
-                    players[id].x = data.players[id].x;
-                    players[id].y = data.players[id].y;
-                    players[id].body = data.players[id].body;
-                    players[id].length = data.players[id].length;
-                } else if (id !== myId) {
-                    delete players[id];
-                }
-            }
-            orbs = data.orbs || [];
-        } else if (data.type === 'remove_player') {
-            delete players[data.id];
-        } else if (data.type === 'player_died') {
-            if (players[data.id]) {
-                players[data.id].x = 100;
-                players[data.id].y = 100;
-                players[data.id].body = [];
-                players[data.id].length = 10;
-            }
-        } else if (data.type === 'move') {
-            if (players[data.id] && data.id !== myId) {
-                players[data.id].x = data.x;
-                players[data.id].y = data.y;
-                players[data.id].body = data.body;
-                players[data.id].length = data.length;
-            }
-        } else if (data.type === 'orb_eaten') {
-            orbs = orbs.filter(orb => orb.id !== data.orbId);
-        }
-    };
+for (let i = 0; i < ORB_COUNT; i++) {
+    const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+    orb.position.x = Math.random() * 80 - 40;
+    orb.position.z = Math.random() * 80 - 40;
+    orb.position.y = 0.5;
+    scene.add(orb);
+    orbs.push(orb);
 }
 
-document.addEventListener('mousedown', e => {
-    targetX = e.clientX;
-    targetY = e.clientY;
+// 光源を追加
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+// カメラの位置を調整
+camera.position.set(0, 20, 30);
+camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+// マウスイベントを処理するための変数
+const mouse = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+
+window.addEventListener('mousemove', (event) => {
+    // マウス位置を正規化
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 });
-document.addEventListener('touchstart', e => {
-    targetX = e.touches[0].clientX;
-    targetY = e.touches[0].clientY;
-});
-document.addEventListener('mouseup', () => {
-    targetX = null;
-    targetY = null;
-});
-document.addEventListener('touchend', () => {
-    targetX = null;
-    targetY = null;
-});
 
-function gameLoop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+// ゲームループ
+function animate() {
+    requestAnimationFrame(animate);
 
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        // 球を描画
-        orbs.forEach(orb => {
-            ctx.beginPath();
-            ctx.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
-            ctx.fillStyle = orb.color;
-            ctx.fill();
-            ctx.closePath();
-        });
+    // レイキャスターを更新
+    raycaster.setFromCamera(mouse, camera);
 
-        for (let id in players) {
-            const player = players[id];
-            
-            if (id === myId && targetX !== null && targetY !== null) {
-                const dx = targetX - player.x;
-                const dy = targetY - player.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance > 5) {
-                    const angle = Math.atan2(dy, dx);
-                    player.x += Math.cos(angle) * PLAYER_SPEED;
-                    player.y += Math.sin(angle) * PLAYER_SPEED;
-
-                    player.body.push({ x: player.x, y: player.y });
-                    while (player.body.length > player.length) {
-                        player.body.shift();
-                    }
-                }
-            }
-
-            if (id === myId && (Date.now() - lastSendTime > sendInterval)) {
-                const currentMove = { x: player.x, y: player.y, body: player.body };
-                if (JSON.stringify(currentMove) !== JSON.stringify(lastMove)) {
-                    ws.send(JSON.stringify({
-                        type: 'move',
-                        id: myId,
-                        x: player.x,
-                        y: player.y,
-                        body: player.body
-                    }));
-                    lastMove = currentMove;
-                    lastSendTime = Date.now();
-                }
-            }
-
-            if (player.body.length > 0) {
-                for (let i = 0; i < player.body.length; i++) {
-                    const segment = player.body[i];
-                    ctx.beginPath();
-                    ctx.arc(segment.x, segment.y, 10, 0, Math.PI * 2);
-                    ctx.fillStyle = (id === myId) ? 'blue' : 'red';
-                    ctx.fill();
-                    ctx.closePath();
-                }
-            }
-        }
+    const intersects = raycaster.intersectObject(plane);
+    if (intersects.length > 0) {
+        const targetPoint = intersects[0].point;
+        // プレイヤーの新しい位置を計算
+        player.position.x += (targetPoint.x - player.position.x) * 0.05;
+        player.position.z += (targetPoint.z - player.position.z) * 0.05;
     }
-    
-    requestAnimationFrame(gameLoop);
-}
 
-// ページ読み込み時にゲームループを開始
-// gameLoop();
+    // 衝突判定
+    orbs.forEach(orb => {
+        const distance = player.position.distanceTo(orb.position);
+        if (distance < 1.5) {
+            orb.visible = false;
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+animate();
+
+// ウィンドウサイズ変更時の処理
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
