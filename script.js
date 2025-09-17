@@ -10,6 +10,7 @@ const ws = new WebSocket(`wss://${window.location.host}`);
 let myId = null;
 let players = {};
 let orbs = {};
+let oniId = null;
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました。');
@@ -20,6 +21,7 @@ ws.onmessage = (event) => {
     
     if (data.type === 'init') {
         myId = data.id;
+        oniId = data.oniId;
         console.log(`割り当てられたID: ${myId}`);
         
         for (const id in data.players) {
@@ -47,6 +49,20 @@ ws.onmessage = (event) => {
             scene.remove(orbs[data.orbId]);
             delete orbs[data.orbId];
         }
+    } else if (data.type === 'oni_changed') {
+        oniId = data.oniId;
+        // 鬼の交代を視覚的に表現
+        for (const id in players) {
+            if (id === oniId) {
+                if (!players[id].sword) {
+                    addSword(players[id]);
+                }
+            } else {
+                if (players[id].sword) {
+                    removeSword(players[id]);
+                }
+            }
+        }
     }
 };
 
@@ -66,6 +82,7 @@ const planeGeometry = new THREE.PlaneGeometry(200, 200);
 const planeMaterial = new THREE.MeshBasicMaterial({ color: 0x444444, side: THREE.DoubleSide });
 const plane = new THREE.Mesh(planeGeometry, planeMaterial);
 plane.rotation.x = Math.PI / 2;
+plane.position.y = -1; // プレイヤーの足元に合わせる
 scene.add(plane);
 
 // 光源
@@ -80,6 +97,29 @@ function createPlayerMesh(id, data) {
     mesh.position.set(data.x, data.y, data.z);
     scene.add(mesh);
     players[id] = mesh;
+    
+    // 鬼であれば剣を追加
+    if (id === oniId) {
+        addSword(mesh);
+    }
+}
+
+// 剣を追加する関数
+function addSword(playerMesh) {
+    const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2);
+    const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
+    const sword = new THREE.Mesh(swordGeometry, swordMaterial);
+    sword.position.set(0, 0.5, -1);
+    playerMesh.add(sword);
+    playerMesh.sword = sword;
+}
+
+// 剣を削除する関数
+function removeSword(playerMesh) {
+    if (playerMesh.sword) {
+        playerMesh.remove(playerMesh.sword);
+        playerMesh.sword = null;
+    }
 }
 
 // オーブメッシュ
@@ -100,7 +140,10 @@ let moveForward = false;
 let moveBackward = false;
 let moveLeft = false;
 let moveRight = false;
-let velocity = new THREE.Vector3();
+let canJump = false;
+
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
 
 // マウスがクリックされたらコントロールを有効にする
 overlay.addEventListener('click', () => {
@@ -120,30 +163,34 @@ controls.addEventListener('unlock', () => {
 // キーボードイベント
 document.addEventListener('keydown', (event) => {
     switch (event.code) {
-        case 'KeyW':
+        case 'KeyS':
             moveForward = true;
             break;
         case 'KeyA':
             moveLeft = true;
             break;
-        case 'KeyS':
+        case 'KeyW':
             moveBackward = true;
             break;
         case 'KeyD':
             moveRight = true;
+            break;
+        case 'Space':
+            if (canJump === true) velocity.y += 10;
+            canJump = false;
             break;
     }
 });
 
 document.addEventListener('keyup', (event) => {
     switch (event.code) {
-        case 'KeyW':
+        case 'KeyS':
             moveForward = false;
             break;
         case 'KeyA':
             moveLeft = false;
             break;
-        case 'KeyS':
+        case 'KeyW':
             moveBackward = false;
             break;
         case 'KeyD':
@@ -153,21 +200,34 @@ document.addEventListener('keyup', (event) => {
 });
 
 // アニメーションループ
+let prevTime = performance.now();
 function animate() {
     requestAnimationFrame(animate);
 
-    // プレイヤーの移動
-    const delta = 0.01;
+    const time = performance.now();
+    const delta = (time - prevTime) / 1000;
+
     velocity.x -= velocity.x * 10.0 * delta;
     velocity.z -= velocity.z * 10.0 * delta;
-    
-    if (moveForward) velocity.z -= 1.0 * delta;
-    if (moveBackward) velocity.z += 1.0 * delta;
-    if (moveLeft) velocity.x -= 1.0 * delta;
-    if (moveRight) velocity.x += 1.0 * delta;
+    velocity.y -= 9.8 * 10.0 * delta; // 重力
 
-    controls.moveRight(velocity.x);
-    controls.moveForward(velocity.z);
+    direction.z = Number(moveForward) - Number(moveBackward);
+    direction.x = Number(moveRight) - Number(moveLeft);
+    direction.normalize();
+
+    if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
+    if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+    
+    controls.moveRight(velocity.x * delta);
+    controls.moveForward(velocity.z * delta);
+    controls.getObject().position.y += velocity.y * delta;
+    
+    // 地面との接触判定
+    if (controls.getObject().position.y < 1.7) {
+        velocity.y = 0;
+        controls.getObject().position.y = 1.7;
+        canJump = true;
+    }
 
     // プレイヤーの位置をサーバーに送信
     if (myId) {
@@ -190,7 +250,21 @@ function animate() {
         }
     }
 
+    // 鬼ごっこ：鬼の判定
+    if (myId === oniId) {
+        for (const id in players) {
+            if (id === myId) continue;
+            const otherPlayer = players[id];
+            const distance = controls.getObject().position.distanceTo(otherPlayer.position);
+            if (distance < 2) {
+                // タッチしたらサーバーに通知
+                ws.send(JSON.stringify({ type: 'tag_player', taggedId: id }));
+            }
+        }
+    }
+
     renderer.render(scene, camera);
+    prevTime = time;
 }
 animate();
 
