@@ -8,17 +8,15 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 let players = {};
-let playerCounter = 0;
 let orbs = {};
 let oniId = null;
 const ORB_COUNT = 50;
+let playerCounter = 0;
 
-// クライアントのファイルをサーブ
 app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
 
-// すべてのクライアントにメッセージをブロードキャスト
 function broadcast(message) {
     const jsonMessage = JSON.stringify(message);
     wss.clients.forEach(client => {
@@ -28,7 +26,6 @@ function broadcast(message) {
     });
 }
 
-// ランダムなオーブを生成
 function generateOrbs() {
     orbs = {};
     for (let i = 0; i < ORB_COUNT; i++) {
@@ -48,29 +45,25 @@ wss.on('connection', ws => {
     players[id] = { id: id, x: 0, y: 1.7, z: 0 };
     console.log(`新しいプレイヤーが接続しました: ${id}`);
     
-    // 最初のプレイヤーが鬼になる
     if (!oniId) {
         oniId = id;
     }
-    
-    // 新しいプレイヤーに初期データを送信
-    ws.send(JSON.stringify({ type: 'init', id: id, players: players, orbs: orbs, oniId: oniId }));
-    
-    // 他のプレイヤーに新しいプレイヤーの情報をブロードキャスト
-    broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, z: players[id].z });
     
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
             
-            if (data.type === 'move') {
+            if (data.type === 'get_id') {
+                ws.send(JSON.stringify({ type: 'init', id: id, players: players, orbs: orbs, oniId: oniId }));
+                // 新しいプレイヤーの情報を他のプレイヤーにブロードキャスト
+                broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, z: players[id].z });
+            } else if (data.type === 'move') {
                 const player = players[data.id];
                 if (player) {
                     player.x = data.x;
                     player.y = data.y;
                     player.z = data.z;
                     
-                    // 他のクライアントにプレイヤーの動きをブロードキャスト
                     broadcast({ type: 'player_update', id: data.id, x: player.x, y: player.y, z: player.z });
                 }
             } else if (data.type === 'eat_orb') {
@@ -79,7 +72,6 @@ wss.on('connection', ws => {
                     broadcast({ type: 'orb_eaten', orbId: data.orbId });
                 }
             } else if (data.type === 'tag_player') {
-                // 鬼がクリックしたプレイヤーに役割を渡す
                 if (data.id === oniId) {
                     oniId = data.taggedId;
                     broadcast({ type: 'oni_changed', oniId: oniId });
@@ -96,7 +88,6 @@ wss.on('connection', ws => {
         delete players[id];
         broadcast({ type: 'remove_player', id: id });
         
-        // 鬼が切断した場合、次の鬼をランダムに選ぶ
         if (id === oniId) {
             const playerIds = Object.keys(players);
             if (playerIds.length > 0) {
