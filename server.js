@@ -45,7 +45,7 @@ setInterval(() => {
         players: players,
         orbs: orbs
     });
-}, 2000);
+}, 1000);
 
 wss.on('connection', ws => {
     const id = `player_${playerCounter++}`;

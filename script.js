@@ -33,6 +33,9 @@ let targetY = null;
 // ページ読み込み時にログインフォームを表示
 loginContainer.style.display = 'block';
 
+// WebSocket接続を初期化
+startWebSocketConnection();
+
 // 「Sign up!」リンクをクリックしたときの処理
 showSignupLink.addEventListener('click', (e) => {
     e.preventDefault();
@@ -58,14 +61,11 @@ function setupWebSocketEvents() {
     ws.onmessage = event => {
         const data = JSON.parse(event.data);
         
-        // ログイン応答の処理
         if (data.type === 'login_response') {
             if (data.success) {
                 myId = data.id;
-                // ログインフォームを非表示にし、ゲームを開始
                 loginContainer.style.display = 'none';
                 canvas.style.display = 'block';
-                // ゲームループを開始
                 if (!window.gameLoopRunning) {
                     window.gameLoopRunning = true;
                     gameLoop();
@@ -74,20 +74,14 @@ function setupWebSocketEvents() {
                 alert(data.message);
             }
         }
-        
-        // 登録応答の処理
         else if (data.type === 'signup_response') {
             alert(data.message);
             if (data.success) {
-                // 登録成功後、ログインフォームに戻る
                 signupContainer.style.display = 'none';
                 loginContainer.style.display = 'block';
             }
         }
-        
-        // 既存のゲームロジック
         else if (data.type === 'init') {
-            // このメッセージはログイン後に受け取る
             for (const playerId in data.players) {
                 players[playerId] = { ...data.players[playerId], body: data.players[playerId].body || [] };
             }
@@ -145,12 +139,7 @@ loginForm.addEventListener('submit', (e) => {
     const username = usernameInput.value;
     const password = passwordInput.value;
     
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        startWebSocketConnection();
-        ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'login', username: username, password: password }));
-        });
-    } else {
+    if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'login', username: username, password: password }));
     }
 });
@@ -167,12 +156,7 @@ signupForm.addEventListener('submit', (e) => {
         return;
     }
     
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        startWebSocketConnection();
-        ws.addEventListener('open', () => {
-            ws.send(JSON.stringify({ type: 'signup', username: username, password: password }));
-        });
-    } else {
+    if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'signup', username: username, password: password }));
     }
 });
