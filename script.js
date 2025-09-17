@@ -1,134 +1,190 @@
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
-const path = require('path');
-const fs = require('fs'); 
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const loginContainer = document.getElementById('login-container');
+const playButton = document.getElementById('play-button');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
 
+let ws = null;
 let players = {};
-let playerCounter = 0;
 let orbs = [];
-const ORB_COUNT = 50;
+let myId = null;
+let lastMove = {};
+let lastSendTime = 0;
+const sendInterval = 20;
+const PLAYER_SPEED = 5;
+const PLAYER_RADIUS = 15;
 
-app.use(express.static(path.join(__dirname, '')));
+let targetX = null;
+let targetY = null;
 
-const port = process.env.PORT || 10000;
-
-function broadcast(message) {
-    const jsonMessage = JSON.stringify(message);
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(jsonMessage);
-        }
-    });
-}
-
-function generateOrbs() {
-    orbs = [];
-    for (let i = 0; i < ORB_COUNT; i++) {
-        orbs.push({
-            id: `orb_${i}`,
-            x: Math.random() * 800,
-            y: Math.random() * 600,
-            color: `hsl(${Math.random() * 360}, 100%, 50%)`
+// 「Play」ボタンのクリックイベント
+playButton.addEventListener('click', () => {
+    const username = usernameInput.value;
+    const password = passwordInput.value;
+    
+    // 簡単なクライアント側認証
+    if (username.length > 0 && password.length > 0) {
+        // ログインフォームを非表示にし、キャンバスを表示
+        loginContainer.style.display = 'none';
+        canvas.style.display = 'block';
+        
+        // WebSocket接続を開始
+        ws = new WebSocket(`wss://${window.location.host}`);
+        
+        // ユーザー情報をサーバーに送信（まだサーバー側に処理はありません）
+        ws.addEventListener('open', () => {
+            ws.send(JSON.stringify({ type: 'login', username: username }));
         });
+        
+        setupWebSocketEvents();
+        gameLoop();
+    } else {
+        alert('Please enter a username and password.');
     }
-}
-generateOrbs();
+});
 
-setInterval(() => {
-    broadcast({
-        type: 'all_player_update',
-        players: players,
-        orbs: orbs
-    });
-}, 2000);
-
-wss.on('connection', ws => {
-    const id = `player_${playerCounter++}`;
-    players[id] = { id: id, x: 100, y: 100, body: [], hp: 100, length: 10 };
-    console.log(`新しいプレイヤーが接続しました: ${id}`);
-    
-    ws.send(JSON.stringify({ type: 'init', id: id, players: players, orbs: orbs }));
-    broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
-    
-    ws.on('message', message => {
-        try {
-            const data = JSON.parse(message);
-            const player = players[data.id];
-            
-            if (data.type === 'move' && player) {
-                player.x = data.x;
-                player.y = data.y;
-                player.body = data.body;
-                
-                for (let otherId in players) {
-                    if (otherId === data.id) continue;
-                    
-                    const otherPlayer = players[otherId];
-                    if (otherPlayer.body.length > 5) {
-                         for(let i = 5; i < otherPlayer.body.length; i++) {
-                             const segment = otherPlayer.body[i];
-                             const dist = Math.sqrt(
-                                 Math.pow(player.x - segment.x, 2) + 
-                                 Math.pow(player.y - segment.y, 2)
-                             );
-                             if (dist < 10) {
-                                 console.log(`Player ${data.id} died by Player ${otherId}.`);
-                                 
-                                 if (player.body.length > 10) {
-                                    for(let j = 0; j < player.length / 5; j++) {
-                                       orbs.push({
-                                           id: `orb_${orbs.length}_${Date.now()}`,
-                                           x: player.body[Math.floor(Math.random() * player.body.length)].x,
-                                           y: player.body[Math.floor(Math.random() * player.body.length)].y,
-                                           color: `hsl(${Math.random() * 360}, 100%, 50%)`
-                                       });
-                                    }
-                                 }
-
-                                 player.x = 100 + Math.random() * 50;
-                                 player.y = 100 + Math.random() * 50;
-                                 player.body = [];
-                                 player.length = 10;
-                                 
-                                 broadcast({ type: 'player_died', id: data.id });
-                                 broadcast({ type: 'all_player_update', players: players, orbs: orbs });
-                                 
-                                 return;
-                             }
-                         }
-                    }
+// WebSocketイベントリスナーをセットアップする関数
+function setupWebSocketEvents() {
+    ws.onmessage = event => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'init') {
+            myId = data.id;
+            for (const playerId in data.players) {
+                players[playerId] = { ...data.players[playerId], body: data.players[playerId].body || [] };
+            }
+            orbs = data.orbs || [];
+        } else if (data.type === 'player_update') {
+            if (!players[data.id]) {
+                players[data.id] = { x: data.x, y: data.y, hp: data.hp, body: [] };
+            } else {
+                players[data.id].x = data.x;
+                players[data.id].y = data.y;
+                players[data.id].hp = data.hp;
+            }
+        } else if (data.type === 'all_player_update') {
+            for (const id in data.players) {
+                if (!players[id]) {
+                    players[id] = { ...data.players[id], body: data.players[id].body || [] };
                 }
+            }
+            for (const id in players) {
+                if (data.players[id]) {
+                    players[id].x = data.players[id].x;
+                    players[id].y = data.players[id].y;
+                    players[id].body = data.players[id].body;
+                    players[id].length = data.players[id].length;
+                } else if (id !== myId) {
+                    delete players[id];
+                }
+            }
+            orbs = data.orbs || [];
+        } else if (data.type === 'remove_player') {
+            delete players[data.id];
+        } else if (data.type === 'player_died') {
+            if (players[data.id]) {
+                players[data.id].x = 100;
+                players[data.id].y = 100;
+                players[data.id].body = [];
+                players[data.id].length = 10;
+            }
+        } else if (data.type === 'move') {
+            if (players[data.id] && data.id !== myId) {
+                players[data.id].x = data.x;
+                players[data.id].y = data.y;
+                players[data.id].body = data.body;
+                players[data.id].length = data.length;
+            }
+        } else if (data.type === 'orb_eaten') {
+            orbs = orbs.filter(orb => orb.id !== data.orbId);
+        }
+    };
+}
 
-                for (let i = orbs.length - 1; i >= 0; i--) {
-                    const orb = orbs[i];
-                    const dist = Math.sqrt(
-                        Math.pow(player.x - orb.x, 2) + 
-                        Math.pow(player.y - orb.y, 2)
-                    );
-                    if (dist < 10) {
-                        player.length += 1;
-                        orbs.splice(i, 1);
-                        broadcast({ type: 'orb_eaten', id: data.id, orbId: orb.id });
+document.addEventListener('mousedown', e => {
+    targetX = e.clientX;
+    targetY = e.clientY;
+});
+document.addEventListener('touchstart', e => {
+    targetX = e.touches[0].clientX;
+    targetY = e.touches[0].clientY;
+});
+document.addEventListener('mouseup', () => {
+    targetX = null;
+    targetY = null;
+});
+document.addEventListener('touchend', () => {
+    targetX = null;
+    targetY = null;
+});
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        // 球を描画
+        orbs.forEach(orb => {
+            ctx.beginPath();
+            ctx.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = orb.color;
+            ctx.fill();
+            ctx.closePath();
+        });
+
+        for (let id in players) {
+            const player = players[id];
+            
+            if (id === myId && targetX !== null && targetY !== null) {
+                const dx = targetX - player.x;
+                const dy = targetY - player.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > 5) {
+                    const angle = Math.atan2(dy, dx);
+                    player.x += Math.cos(angle) * PLAYER_SPEED;
+                    player.y += Math.sin(angle) * PLAYER_SPEED;
+
+                    player.body.push({ x: player.x, y: player.y });
+                    while (player.body.length > player.length) {
+                        player.body.shift();
                     }
                 }
             }
-        } catch (error) {
-            console.error('メッセージの解析に失敗しました:', error);
+
+            if (id === myId && (Date.now() - lastSendTime > sendInterval)) {
+                const currentMove = { x: player.x, y: player.y, body: player.body };
+                if (JSON.stringify(currentMove) !== JSON.stringify(lastMove)) {
+                    ws.send(JSON.stringify({
+                        type: 'move',
+                        id: myId,
+                        x: player.x,
+                        y: player.y,
+                        body: player.body
+                    }));
+                    lastMove = currentMove;
+                    lastSendTime = Date.now();
+                }
+            }
+
+            if (player.body.length > 0) {
+                for (let i = 0; i < player.body.length; i++) {
+                    const segment = player.body[i];
+                    ctx.beginPath();
+                    ctx.arc(segment.x, segment.y, 10, 0, Math.PI * 2);
+                    ctx.fillStyle = (id === myId) ? 'blue' : 'red';
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            }
         }
-    });
+    }
+    
+    requestAnimationFrame(gameLoop);
+}
 
-    ws.on('close', () => {
-        console.log(`プレイヤーが切断しました: ${id}`);
-        delete players[id];
-        broadcast({ type: 'remove_player', id: id });
-    });
-});
-
-server.listen(port, () => {
-    console.log(`サーバーがポート ${port} で起動しました。`);
-});
+// ページ読み込み時にゲームループを開始
+// gameLoop();

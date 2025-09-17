@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -38,37 +39,42 @@ function generateOrbs() {
 }
 generateOrbs();
 
-// 2秒ごとに全プレイヤーの状態と球をブロードキャスト
 setInterval(() => {
     broadcast({
         type: 'all_player_update',
         players: players,
         orbs: orbs
     });
-}, 1000);
+}, 2000);
 
 wss.on('connection', ws => {
-    const id = `player_${playerCounter++}`;
-    players[id] = { id: id, x: 100, y: 100, body: [], hp: 100, length: 10 };
-    console.log(`新しいプレイヤーが接続しました: ${id}`);
-    
-    ws.send(JSON.stringify({ type: 'init', id: id, players: players, orbs: orbs }));
-    broadcast({ type: 'player_update', id: id, x: players[id].x, y: players[id].y, hp: players[id].hp });
-    
+    let playerId = null;
+
     ws.on('message', message => {
         try {
             const data = JSON.parse(message);
-            const player = players[data.id];
             
+            // ログイン処理
+            if (data.type === 'login') {
+                playerId = data.username;
+                if (!players[playerId]) {
+                    players[playerId] = { id: playerId, x: 100, y: 100, body: [], hp: 100, length: 10 };
+                }
+                console.log(`Player logged in: ${playerId}`);
+                ws.send(JSON.stringify({ type: 'init', id: playerId, players: players, orbs: orbs }));
+                broadcast({ type: 'player_update', id: playerId, x: players[playerId].x, y: players[playerId].y, hp: players[playerId].hp });
+            }
+            
+            if (!playerId) return;
+            
+            const player = players[playerId];
             if (data.type === 'move' && player) {
-                // サーバー側でプレイヤーの状態を更新する
                 player.x = data.x;
                 player.y = data.y;
                 player.body = data.body;
                 
-                // 衝突判定
                 for (let otherId in players) {
-                    if (otherId === data.id) continue;
+                    if (otherId === playerId) continue;
                     
                     const otherPlayer = players[otherId];
                     if (otherPlayer.body.length > 5) {
@@ -79,7 +85,7 @@ wss.on('connection', ws => {
                                  Math.pow(player.y - segment.y, 2)
                              );
                              if (dist < 10) {
-                                 console.log(`Player ${data.id} died by Player ${otherId}.`);
+                                 console.log(`Player ${playerId} died by Player ${otherId}.`);
                                  
                                  if (player.body.length > 10) {
                                     for(let j = 0; j < player.length / 5; j++) {
@@ -97,7 +103,7 @@ wss.on('connection', ws => {
                                  player.body = [];
                                  player.length = 10;
                                  
-                                 broadcast({ type: 'player_died', id: data.id });
+                                 broadcast({ type: 'player_died', id: playerId });
                                  broadcast({ type: 'all_player_update', players: players, orbs: orbs });
                                  
                                  return;
@@ -106,7 +112,6 @@ wss.on('connection', ws => {
                     }
                 }
 
-                // 球の接触判定
                 for (let i = orbs.length - 1; i >= 0; i--) {
                     const orb = orbs[i];
                     const dist = Math.sqrt(
@@ -116,7 +121,7 @@ wss.on('connection', ws => {
                     if (dist < 10) {
                         player.length += 1;
                         orbs.splice(i, 1);
-                        broadcast({ type: 'orb_eaten', id: data.id, orbId: orb.id });
+                        broadcast({ type: 'orb_eaten', id: playerId, orbId: orb.id });
                     }
                 }
             }
@@ -126,9 +131,11 @@ wss.on('connection', ws => {
     });
 
     ws.on('close', () => {
-        console.log(`プレイヤーが切断しました: ${id}`);
-        delete players[id];
-        broadcast({ type: 'remove_player', id: id });
+        if (playerId) {
+            console.log(`プレイヤーが切断しました: ${playerId}`);
+            delete players[playerId];
+            broadcast({ type: 'remove_player', id: playerId });
+        }
     });
 });
 
