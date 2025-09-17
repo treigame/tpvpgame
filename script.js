@@ -10,7 +10,6 @@ let oniId = null;
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました。');
-    // 接続時にサーバーにIDを要求
     ws.send(JSON.stringify({ type: 'get_id' }));
 };
 
@@ -91,6 +90,26 @@ plane.rotation.x = Math.PI / 2;
 plane.position.y = -1;
 scene.add(plane);
 
+// 白い壁の作成
+const wallGeometry = new THREE.BoxGeometry(200, 20, 1);
+const wallMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const wall1 = new THREE.Mesh(wallGeometry, wallMaterial);
+wall1.position.set(0, 9, -100);
+scene.add(wall1);
+
+const wall2 = new THREE.Mesh(wallGeometry, wallMaterial);
+wall2.position.set(0, 9, 100);
+scene.add(wall2);
+
+const wall3 = new THREE.Mesh(new THREE.BoxGeometry(1, 20, 200), wallMaterial);
+wall3.position.set(-100, 9, 0);
+scene.add(wall3);
+
+const wall4 = new THREE.Mesh(new THREE.BoxGeometry(1, 20, 200), wallMaterial);
+wall4.position.set(100, 9, 0);
+scene.add(wall4);
+
+
 // 光源
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
 scene.add(ambientLight);
@@ -115,7 +134,6 @@ function addSword(mesh) {
     const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
     const sword = new THREE.Mesh(swordGeometry, swordMaterial);
     
-    // プレイヤーから見て右側に配置
     sword.position.set(1.5, -0.5, -2);
     
     mesh.add(sword);
@@ -153,9 +171,7 @@ let canJump = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
-// 自動でゲームを開始
 document.body.requestPointerLock();
-// 鬼の場合は剣を表示
 if (myId === oniId) {
     addSword(camera);
 }
@@ -209,7 +225,7 @@ function animate() {
 
     velocity.x -= velocity.x * 10.0 * delta;
     velocity.z -= velocity.z * 10.0 * delta;
-    velocity.y -= 9.8 * 10.0 * delta; // 重力
+    velocity.y -= 9.8 * 10.0 * delta;
 
     direction.z = Number(moveForward) - Number(moveBackward);
     direction.x = Number(moveRight) - Number(moveLeft);
@@ -261,4 +277,4 @@ setInterval(() => {
             }
         }
     }
-}, 500); // 0.5秒ごとに衝突判定
+}, 500);
