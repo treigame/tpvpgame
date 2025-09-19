@@ -15,9 +15,6 @@ const RED_ITEM_COUNT = 20; // 赤いアイテムの数
 let playerCounter = 0;
 let snowballCounter = 0;
 
-// パワーアップの種類
-const POWER_UP_TYPES = ['SPEED_BOOST', 'INVISIBLE', 'SHIELD', 'JUMP_BOOST'];
-
 // プレイヤーデータの検証関数
 function isValidPosition(x, y, z) {
     const BOUNDARY = 95;
@@ -58,14 +55,14 @@ function sendToPlayer(playerId, message) {
     });
 }
 
-// オーブ生成関数（建物を考慮）
-function generateOrbs() {
-    orbs = {};
+// 赤いアイテム生成関数（建物を考慮）
+function generateRedItems() {
+    redItems = {};
     const BOUNDARY = 80;
     const MIN_DISTANCE = 8;
-    const BUILDING_RADIUS = 25; // 建物の影響範囲
+    const BUILDING_RADIUS = 25;
     
-    for (let i = 0; i < ORB_COUNT; i++) {
+    for (let i = 0; i < RED_ITEM_COUNT; i++) {
         let x, z, attempts = 0;
         let validPosition = false;
         
@@ -78,7 +75,6 @@ function generateOrbs() {
             // 建物の中心部を避ける（1階の広間は除く）
             const distanceFromCenter = Math.sqrt(x * x + z * z);
             if (distanceFromCenter < BUILDING_RADIUS) {
-                // 1階の広間（中央部分）はOK、建物の壁部分は避ける
                 if (distanceFromCenter > 15) {
                     validPosition = false;
                     attempts++;
@@ -86,26 +82,12 @@ function generateOrbs() {
                 }
             }
             
-            // 他のオーブとの距離をチェック
-            for (const existingOrbId in orbs) {
-                const existingOrb = orbs[existingOrbId];
+            // 他の赤いアイテムとの距離をチェック
+            for (const existingItemId in redItems) {
+                const existingItem = redItems[existingItemId];
                 const distance = Math.sqrt(
-                    Math.pow(x - existingOrb.x, 2) + 
-                    Math.pow(z - existingOrb.z, 2)
-                );
-                
-                if (distance < MIN_DISTANCE) {
-                    validPosition = false;
-                    break;
-                }
-            }
-            
-            // パワーアップとの距離もチェック
-            for (const existingPowerUpId in powerUps) {
-                const existingPowerUp = powerUps[existingPowerUpId];
-                const distance = Math.sqrt(
-                    Math.pow(x - existingPowerUp.x, 2) + 
-                    Math.pow(z - existingPowerUp.z, 2)
+                    Math.pow(x - existingItem.x, 2) + 
+                    Math.pow(z - existingItem.z, 2)
                 );
                 
                 if (distance < MIN_DISTANCE) {
@@ -117,117 +99,49 @@ function generateOrbs() {
             attempts++;
         }
         
-        const orbId = `orb_${i}`;
-        orbs[orbId] = {
-            id: orbId,
+        const itemId = `red_item_${i}`;
+        redItems[itemId] = {
+            id: itemId,
             x: x || (Math.random() - 0.5) * BOUNDARY,
             y: 0.5,
             z: z || (Math.random() - 0.5) * BOUNDARY,
         };
     }
     
-    console.log(`${ORB_COUNT}個のオーブを生成しました（建物配慮版）`);
+    console.log(`${RED_ITEM_COUNT}個の赤いアイテムを生成しました`);
 }
 
-// パワーアップ生成関数（建物を考慮）
-function generatePowerUps() {
-    powerUps = {};
-    const BOUNDARY = 70;
-    const MIN_DISTANCE = 15;
-    const BUILDING_RADIUS = 25;
-    
-    for (let i = 0; i < POWERUP_COUNT; i++) {
-        let x, z, attempts = 0;
-        let validPosition = false;
-        
-        while (!validPosition && attempts < 100) {
-            x = (Math.random() - 0.5) * BOUNDARY * 2;
-            z = (Math.random() - 0.5) * BOUNDARY * 2;
-            
-            validPosition = true;
-            
-            // 建物の中心部を避ける
-            const distanceFromCenter = Math.sqrt(x * x + z * z);
-            if (distanceFromCenter < BUILDING_RADIUS) {
-                if (distanceFromCenter > 15) {
-                    validPosition = false;
-                    attempts++;
-                    continue;
-                }
-            }
-            
-            // 他のパワーアップとの距離をチェック
-            for (const existingPowerUpId in powerUps) {
-                const existingPowerUp = powerUps[existingPowerUpId];
-                const distance = Math.sqrt(
-                    Math.pow(x - existingPowerUp.x, 2) + 
-                    Math.pow(z - existingPowerUp.z, 2)
-                );
-                
-                if (distance < MIN_DISTANCE) {
-                    validPosition = false;
-                    break;
-                }
-            }
-            
-            // オーブとの距離もチェック
-            for (const existingOrbId in orbs) {
-                const existingOrb = orbs[existingOrbId];
-                const distance = Math.sqrt(
-                    Math.pow(x - existingOrb.x, 2) + 
-                    Math.pow(z - existingOrb.z, 2)
-                );
-                
-                if (distance < MIN_DISTANCE) {
-                    validPosition = false;
-                    break;
-                }
-            }
-            
-            attempts++;
+// 初期生成
+generateRedItems();
+
+// 鬼の自動選択
+function selectRandomOni() {
+    const playerIds = Object.keys(players);
+    if (playerIds.length > 0) {
+        const newOniId = playerIds[Math.floor(Math.random() * playerIds.length)];
+        if (oniId !== newOniId) {
+            oniId = newOniId;
+            broadcast({ type: 'oni_changed', oniId: oniId });
+            console.log(`新しい鬼が選ばれました: ${oniId}`);
         }
-        
-        const powerUpId = `powerup_${powerUpCounter++}`;
-        const randomType = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
-        
-        powerUps[powerUpId] = {
-            id: powerUpId,
-            type: randomType,
-            x: x || (Math.random() - 0.5) * BOUNDARY,
-            y: 1.0,
-            z: z || (Math.random() - 0.5) * BOUNDARY,
-        };
+    } else {
+        oniId = null;
     }
+}
+
+// プレイヤーの位置更新レート制限
+const playerUpdateLimits = new Map();
+const UPDATE_RATE_LIMIT = 20;
+
+function canUpdatePlayer(playerId) {
+    const now = Date.now();
+    const lastUpdate = playerUpdateLimits.get(playerId) || 0;
     
-    console.log(`${POWERUP_COUNT}個のパワーアップを生成しました（建物配慮版）`);
-}bs[existingOrbId];
-                const distance = Math.sqrt(
-                    Math.pow(x - existingOrb.x, 2) + 
-                    Math.pow(z - existingOrb.z, 2)
-                );
-                
-                if (distance < MIN_DISTANCE) {
-                    validPosition = false;
-                    break;
-                }
-            }
-            
-            attempts++;
-        }
-        
-        const powerUpId = `powerup_${powerUpCounter++}`;
-        const randomType = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
-        
-        powerUps[powerUpId] = {
-            id: powerUpId,
-            type: randomType,
-            x: x || (Math.random() - 0.5) * BOUNDARY,
-            y: 1.0,
-            z: z || (Math.random() - 0.5) * BOUNDARY,
-        };
+    if (now - lastUpdate >= UPDATE_RATE_LIMIT) {
+        playerUpdateLimits.set(playerId, now);
+        return true;
     }
-    
-    console.log(`${POWERUP_COUNT}個のパワーアップを生成しました`);
+    return false;
 }
 
 // 雪玉の当たり判定
@@ -284,91 +198,6 @@ function resetGame() {
         redItems: redItems,
         oniId: oniId
     });
-}
-    const BOUNDARY = 70;
-    const MIN_DISTANCE = 15;
-    let attempts = 0;
-    let x, z;
-    let validPosition = false;
-    
-    while (!validPosition && attempts < 50) {
-        x = (Math.random() - 0.5) * BOUNDARY * 2;
-        z = (Math.random() - 0.5) * BOUNDARY * 2;
-        
-        validPosition = true;
-        
-        // 既存のアイテムとの距離をチェック
-        for (const existingId in {...orbs, ...powerUps}) {
-            const existing = orbs[existingId] || powerUps[existingId];
-            const distance = Math.sqrt(
-                Math.pow(x - existing.x, 2) + 
-                Math.pow(z - existing.z, 2)
-            );
-            
-            if (distance < MIN_DISTANCE) {
-                validPosition = false;
-                break;
-            }
-        }
-        
-        attempts++;
-    }
-    
-    if (validPosition) {
-        const powerUpId = `powerup_${powerUpCounter++}`;
-        const randomType = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
-        
-        const newPowerUp = {
-            id: powerUpId,
-            type: randomType,
-            x: x,
-            y: 1.0,
-            z: z,
-        };
-        
-        powerUps[powerUpId] = newPowerUp;
-        
-        broadcast({
-            type: 'powerup_spawned',
-            id: powerUpId,
-            powerUp: newPowerUp
-        });
-        
-        console.log(`新しいパワーアップが生成されました: ${powerUpId} (${randomType})`);
-    }
-}
-
-// 初期生成
-generateRedItems();
-
-// 鬼の自動選択
-function selectRandomOni() {
-    const playerIds = Object.keys(players);
-    if (playerIds.length > 0) {
-        const newOniId = playerIds[Math.floor(Math.random() * playerIds.length)];
-        if (oniId !== newOniId) {
-            oniId = newOniId;
-            broadcast({ type: 'oni_changed', oniId: oniId });
-            console.log(`新しい鬼が選ばれました: ${oniId}`);
-        }
-    } else {
-        oniId = null;
-    }
-}
-
-// プレイヤーの位置更新レート制限
-const playerUpdateLimits = new Map();
-const UPDATE_RATE_LIMIT = 20;
-
-function canUpdatePlayer(playerId) {
-    const now = Date.now();
-    const lastUpdate = playerUpdateLimits.get(playerId) || 0;
-    
-    if (now - lastUpdate >= UPDATE_RATE_LIMIT) {
-        playerUpdateLimits.set(playerId, now);
-        return true;
-    }
-    return false;
 }
 
 // WebSocket接続処理
@@ -605,9 +434,6 @@ const cleanupInterval = setInterval(() => {
         }
     }
 }, 2 * 60 * 1000);
-
-// パワーアップの定期生成を削除
-// const powerUpSpawnInterval = setInterval(() => { ... }, 30000);
 
 // ゲーム統計の定期出力（10分間隔）
 const statsInterval = setInterval(() => {

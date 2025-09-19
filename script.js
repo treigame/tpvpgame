@@ -1,112 +1,4 @@
-document.getElementById('player-id').textContent = myId;
-    document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
-    document.getElementById('score').textContent = gameState.score;
-    document.getElementById('game-time').textContent = 
-        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    // 赤いアイテム数の更新
-    const redItemsElement = document.getElementById('red-items');
-    const redItemsCountElement = document.getElementById('red-items-count');
-    const snowballStatusElement = document.getElementById('snowball-status');
-    
-    if (redItemsElement) {
-        redItemsElement.textContent = gameState.redItemsCollected;
-    }
-    
-    if (redItemsCountElement) {
-        redItemsCountElement.style.display = myId !== oniId ? 'block' : 'none';
-    }
-    
-    if (snowballStatusElement) {
-        snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
-    }
-    
-    // 鬼時間の更新
-    const oniTimeElement = document.getElementById('oni-time');
-    if (myId === oniId) {
-        oniTimeElement.style.display = 'block';
-        let totalOniTime = gameState.timeAsOni;
-        if (gameState.oniStartTime) {
-            totalOniTime += currentTime - gameState.oniStartTime;
-        }
-        const oniSeconds = Math.floor(totalOniTime / 1000);
-        const oniMins = Math.floor(oniSeconds / 60);
-        const oniSecs = oniSeconds % 60;
-        document.getElementById('oni-duration').textContent = 
-            `${oniMins.toString().padStart(2, '0')}:${oniSecs.toString().padStart(2, '0')}`;
-    } else {
-        oniTimeElement.style.display = 'none';
-    }
-}
-
-// パワーアップ効果の処理を削除
-// function processPowerUpEffects() { ... } - 削除
-
-// ミニマップの更新（赤いアイテム対応）
-function updateMinimap() {
-    const ctx = gameState.minimapCtx;
-    const canvas = gameState.minimapCanvas;
-    
-    if (!ctx || !canvas) return;
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = '#222222';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
-    
-    const scale = (canvas.width - 20) / 200;
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    
-    // 自分の位置
-    const myPos = controls.getObject().position;
-    const myX = centerX + myPos.x * scale;
-    const myZ = centerY + myPos.z * scale;
-    
-    ctx.fillStyle = myId === oniId ? '#0000ff' : '#00ff00';
-    ctx.beginPath();
-    ctx.arc(myX, myZ, 4, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // 他のプレイヤーの位置
-    for (const id in players) {
-        const player = players[id];
-        const playerX = centerX + player.position.x * scale;
-        const playerZ = centerY + player.position.z * scale;
-        
-        ctx.fillStyle = id === oniId ? '#ff0000' : '#88ff88';
-        ctx.beginPath();
-        ctx.arc(playerX, playerZ, 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // 赤いアイテムの位置
-    ctx.fillStyle = '#ff4444';
-    for (const id in redItems) {
-        const item = redItems[id];
-        const itemX = centerX + item.position.x * scale;
-        const itemZ = centerY + item.position.z * scale;
-        
-        ctx.beginPath();
-        ctx.arc(itemX, itemZ, 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // 建物の表示
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 1;
-    const buildingSize = 40 * scale;
-    ctx.strokeRect(
-        centerX - buildingSize/2, 
-        centerY - buildingSize/2, 
-        buildingSize, 
-        buildingSize
-    );
-}import * as THREE from 'three';
+import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 // WebSocket接続
@@ -132,35 +24,10 @@ let gameState = {
     minimapCtx: null
 };
 
-// パワーアップの種類
-const POWER_UP_TYPES = {
-    SPEED_BOOST: {
-        name: 'スピードブースト',
-        color: 0x00ff00,
-        duration: 10000,
-        effect: 'speed',
-        multiplier: 1.5
-    },
-    INVISIBLE: {
-        name: '透明化',
-        color: 0x888888,
-        duration: 8000,
-        effect: 'invisible'
-    },
-    SHIELD: {
-        name: 'シールド',
-        color: 0x0088ff,
-        duration: 15000,
-        effect: 'shield'
-    },
-    JUMP_BOOST: {
-        name: 'ジャンプブースト',
-        color: 0xff8800,
-        duration: 12000,
-        effect: 'jump',
-        multiplier: 1.8
-    }
-};
+// 設定とジョイスティックの状態
+let isTabletMode = false;
+let joystickActive = false;
+let joystickPosition = { x: 0, y: 0 };
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました。');
@@ -217,8 +84,8 @@ ws.onmessage = (event) => {
             gameState.redItemsCollected++;
             gameState.score += 10;
             
-            // 10個集めたら雪玉投擲可能
-            if (gameState.redItemsCollected >= 10) {
+            // 8個集めたら雪玉投擲可能
+            if (gameState.redItemsCollected >= 8) {
                 canThrowSnowball = true;
                 showMessage('雪玉が投げられるようになりました！クリックで投擲', 'success', 3000);
             }
@@ -257,7 +124,8 @@ ws.onmessage = (event) => {
         if (data.playerId === myId) {
             showExclamation = false;
             hideExclamationMark();
-        } else if (data.type === 'oni_changed') {
+        }
+    } else if (data.type === 'oni_changed') {
         const oldOni = oniId;
         oniId = data.oniId;
         console.log(`鬼が交代しました: ${oniId}`);
@@ -358,6 +226,129 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
+// 5階建て建物の作成
+function createBuildings() {
+    const buildings = [];
+    const BUILDING_WIDTH = 40;
+    const BUILDING_DEPTH = 40;
+    const FLOOR_HEIGHT = 15;
+    const WALL_THICKNESS = 2;
+    
+    // 色のパレット
+    const colors = [
+        0xff6b6b, // 赤
+        0x4ecdc4, // ターコイズ
+        0x45b7d1, // 青
+        0x96ceb4, // 緑
+        0xfeca57, // 黄
+        0xff9ff3, // ピンク
+        0x54a0ff, // 青2
+        0x5f27cd  // 紫
+    ];
+    
+    // 各階の建物を作成
+    for (let floor = 0; floor < 5; floor++) {
+        const y = FLOOR_HEIGHT * floor;
+        const floorGroup = new THREE.Group();
+        
+        // 床の作成
+        if (floor > 0) {
+            const floorGeometry = new THREE.BoxGeometry(BUILDING_WIDTH, 1, BUILDING_DEPTH);
+            const floorMaterial = new THREE.MeshStandardMaterial({ 
+                color: colors[floor % colors.length],
+                opacity: 0.8,
+                transparent: true
+            });
+            const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
+            floorMesh.position.set(0, y - 1, 0);
+            floorMesh.receiveShadow = true;
+            floorMesh.castShadow = true;
+            floorGroup.add(floorMesh);
+        }
+        
+        // 外壁の作成（中央は空洞）
+        const wallHeight = FLOOR_HEIGHT - 1;
+        const wallColor = colors[(floor + 2) % colors.length];
+        
+        // 北側の壁（3つに分割して中央に入口）
+        for (let i = 0; i < 3; i++) {
+            if (i === 1 && floor === 0) continue; // 1階の中央は入口
+            
+            const wallGeometry = new THREE.BoxGeometry(BUILDING_WIDTH / 3, wallHeight, WALL_THICKNESS);
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
+            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall.position.set((i - 1) * (BUILDING_WIDTH / 3), y + wallHeight / 2, -BUILDING_DEPTH / 2);
+            wall.receiveShadow = true;
+            wall.castShadow = true;
+            floorGroup.add(wall);
+        }
+        
+        // 南側の壁
+        for (let i = 0; i < 3; i++) {
+            if (i === 1 && floor === 0) continue;
+            const wallGeometry = new THREE.BoxGeometry(BUILDING_WIDTH / 3, wallHeight, WALL_THICKNESS);
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
+            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall.position.set((i - 1) * (BUILDING_WIDTH / 3), y + wallHeight / 2, BUILDING_DEPTH / 2);
+            wall.receiveShadow = true;
+            wall.castShadow = true;
+            floorGroup.add(wall);
+        }
+        
+        // 東側の壁
+        for (let i = 0; i < 3; i++) {
+            if (i === 1 && floor === 0) continue;
+            const wallGeometry = new THREE.BoxGeometry(WALL_THICKNESS, wallHeight, BUILDING_DEPTH / 3);
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
+            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall.position.set(BUILDING_WIDTH / 2, y + wallHeight / 2, (i - 1) * (BUILDING_DEPTH / 3));
+            wall.receiveShadow = true;
+            wall.castShadow = true;
+            floorGroup.add(wall);
+        }
+        
+        // 西側の壁
+        for (let i = 0; i < 3; i++) {
+            if (i === 1 && floor === 0) continue;
+            const wallGeometry = new THREE.BoxGeometry(WALL_THICKNESS, wallHeight, BUILDING_DEPTH / 3);
+            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
+            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall.position.set(-BUILDING_WIDTH / 2, y + wallHeight / 2, (i - 1) * (BUILDING_DEPTH / 3));
+            wall.receiveShadow = true;
+            wall.castShadow = true;
+            floorGroup.add(wall);
+        }
+        
+        // 階段の作成
+        if (floor < 4) {
+            const stairWidth = 8;
+            const stairDepth = 3;
+            const stairSteps = 10;
+            const stepHeight = FLOOR_HEIGHT / stairSteps;
+            
+            for (let step = 0; step < stairSteps; step++) {
+                const stepGeometry = new THREE.BoxGeometry(stairWidth, stepHeight, stairDepth);
+                const stepMaterial = new THREE.MeshStandardMaterial({ color: colors[(floor + 4) % colors.length] });
+                const stepMesh = new THREE.Mesh(stepGeometry, stepMaterial);
+                stepMesh.position.set(
+                    BUILDING_WIDTH / 2 - 5,
+                    y + (step + 0.5) * stepHeight,
+                    BUILDING_DEPTH / 2 - 5 - step * (stairDepth / 2)
+                );
+                stepMesh.receiveShadow = true;
+                stepMesh.castShadow = true;
+                floorGroup.add(stepMesh);
+            }
+        }
+        
+        scene.add(floorGroup);
+        buildings.push(floorGroup);
+    }
+    
+    console.log('5階建ての建物を作成しました');
+    return buildings;
+}
+
 // 外周の壁と建物の作成
 const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
@@ -400,165 +391,6 @@ walls.push(wall4);
 
 // 5階建ての建物を作成
 const buildings = createBuildings();
-    const buildings = [];
-    
-    // 建物の設定
-    const BUILDING_WIDTH = 40;
-    const BUILDING_DEPTH = 40;
-    const FLOOR_HEIGHT = 15;
-    const WALL_THICKNESS = 2;
-    
-    // 色のパレット
-    const colors = [
-        0xff6b6b, // 赤
-        0x4ecdc4, // ターコイズ
-        0x45b7d1, // 青
-        0x96ceb4, // 緑
-        0xfeca57, // 黄
-        0xff9ff3, // ピンク
-        0x54a0ff, // 青2
-        0x5f27cd  // 紫
-    ];
-    
-    // 各階の建物を作成
-    for (let floor = 0; floor < 5; floor++) {
-        const y = FLOOR_HEIGHT * floor;
-        const floorGroup = new THREE.Group();
-        
-        // 床の作成
-        if (floor > 0) { // 1階以上に床を作成（地面は既にある）
-            const floorGeometry = new THREE.BoxGeometry(BUILDING_WIDTH, 1, BUILDING_DEPTH);
-            const floorMaterial = new THREE.MeshStandardMaterial({ 
-                color: colors[floor % colors.length],
-                opacity: 0.8,
-                transparent: true
-            });
-            const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
-            floorMesh.position.set(0, y - 1, 0);
-            floorMesh.receiveShadow = true;
-            floorMesh.castShadow = true;
-            floorGroup.add(floorMesh);
-        }
-        
-        // 外壁の作成（中央は空洞）
-        const wallHeight = FLOOR_HEIGHT - 1;
-        const wallColor = colors[(floor + 2) % colors.length];
-        
-        // 北側の壁（複数のセグメントに分割して出入り口を作成）
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue; // 1階の中央は入口として空ける
-            
-            const wallGeometry = new THREE.BoxGeometry(
-                BUILDING_WIDTH / 3, 
-                wallHeight, 
-                WALL_THICKNESS
-            );
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set(
-                (i - 1) * (BUILDING_WIDTH / 3), 
-                y + wallHeight / 2, 
-                -BUILDING_DEPTH / 2
-            );
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 南側の壁
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue; // 1階の中央は入口として空ける
-            
-            const wallGeometry = new THREE.BoxGeometry(
-                BUILDING_WIDTH / 3, 
-                wallHeight, 
-                WALL_THICKNESS
-            );
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set(
-                (i - 1) * (BUILDING_WIDTH / 3), 
-                y + wallHeight / 2, 
-                BUILDING_DEPTH / 2
-            );
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 東側の壁
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue; // 1階の中央は入口として空ける
-            
-            const wallGeometry = new THREE.BoxGeometry(
-                WALL_THICKNESS, 
-                wallHeight, 
-                BUILDING_DEPTH / 3
-            );
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set(
-                BUILDING_WIDTH / 2, 
-                y + wallHeight / 2, 
-                (i - 1) * (BUILDING_DEPTH / 3)
-            );
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 西側の壁
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue; // 1階の中央は入口として空ける
-            
-            const wallGeometry = new THREE.BoxGeometry(
-                WALL_THICKNESS, 
-                wallHeight, 
-                BUILDING_DEPTH / 3
-            );
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set(
-                -BUILDING_WIDTH / 2, 
-                y + wallHeight / 2, 
-                (i - 1) * (BUILDING_DEPTH / 3)
-            );
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 階段の作成（各階に上る階段）
-        if (floor < 4) { // 最上階には階段不要
-            const stairWidth = 8;
-            const stairDepth = 3;
-            const stairSteps = 10;
-            const stepHeight = FLOOR_HEIGHT / stairSteps;
-            
-            for (let step = 0; step < stairSteps; step++) {
-                const stepGeometry = new THREE.BoxGeometry(stairWidth, stepHeight, stairDepth);
-                const stepMaterial = new THREE.MeshStandardMaterial({ 
-                    color: colors[(floor + 4) % colors.length] 
-                });
-                const stepMesh = new THREE.Mesh(stepGeometry, stepMaterial);
-                stepMesh.position.set(
-                    BUILDING_WIDTH / 2 - 5, // 建物の端に配置
-                    y + (step + 0.5) * stepHeight,
-                    BUILDING_DEPTH / 2 - 5 - step * (stairDepth / 2)
-                );
-                stepMesh.receiveShadow = true;
-                stepMesh.castShadow = true;
-                floorGroup.add(stepMesh);
-            }
-        }
-        
-        scene.add(floorGroup);
-        buildings.push(floorGroup);
-    }
-    
-    console.log('5階建ての建物を作成しました');
-    return buildings;
-}
 
 // UIエレメントの作成
 function createUI() {
@@ -586,7 +418,7 @@ function createUI() {
             <div>役割: <span id="role">${myId === oniId ? '👹 鬼' : '🏃 逃走者'}</span></div>
             <div>スコア: <span id="score">${gameState.score}</span></div>
             <div id="red-items-count" style="display: ${myId !== oniId ? 'block' : 'none'}">
-                赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/10
+                赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/8
             </div>
             <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
                 雪玉投擲可能！
@@ -598,13 +430,10 @@ function createUI() {
                 鬼時間: <span id="oni-duration">00:00</span>
             </div>
         </div>
-        <div id="effects-info" style="margin-top: 10px;">
-            <!-- パワーアップ効果表示削除 -->
-        </div>
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
             <div>W: 後退 | S: 前進 | A: 右移動 | D: 左移動 | Space: ジャンプ</div>
             <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
-            <div>🔴赤いアイテム10個で雪玉投擲可能 🏢建物探索</div>
+            <div>🔴赤いアイテム8個で雪玉投擲可能 🏢建物探索</div>
         </div>
     `;
     
@@ -781,7 +610,7 @@ function createSnowballMesh(id, data) {
 // 雪玉のアニメーション
 function animateSnowball(mesh, data) {
     const startTime = Date.now();
-    const duration = 2000; // 2秒で消える
+    const duration = 2000;
     const startPos = new THREE.Vector3(data.x, data.y, data.z);
     const endPos = new THREE.Vector3(data.targetX, data.targetY, data.targetZ);
     
@@ -790,13 +619,10 @@ function animateSnowball(mesh, data) {
         const progress = Math.min(elapsed / duration, 1);
         
         if (progress < 1) {
-            // 放物線の軌道
             mesh.position.lerpVectors(startPos, endPos, progress);
-            mesh.position.y += Math.sin(progress * Math.PI) * 3; // 弧を描く
-            
+            mesh.position.y += Math.sin(progress * Math.PI) * 3;
             requestAnimationFrame(animate);
         } else {
-            // 雪玉を削除
             scene.remove(mesh);
             for (const id in snowballs) {
                 if (snowballs[id] === mesh) {
@@ -815,7 +641,6 @@ function showExclamationMark() {
     const exclamationElement = document.getElementById('exclamation-mark');
     if (exclamationElement) {
         exclamationElement.style.display = 'block';
-        exclamationElement.style.animation = 'pulse 0.5s infinite alternate';
     } else {
         const exclamation = document.createElement('div');
         exclamation.id = 'exclamation-mark';
@@ -833,7 +658,6 @@ function showExclamationMark() {
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         `;
         
-        // クリック/タッチで鬼交代
         exclamation.addEventListener('click', () => {
             if (showExclamation && myId !== oniId) {
                 ws.send(JSON.stringify({ 
@@ -864,57 +688,6 @@ function hideExclamationMark() {
         exclamationElement.style.display = 'none';
     }
 }
-
-// PointerLockControls
-const controls = new PointerLockControls(camera, document.body);
-scene.add(controls.getObject());
-
-controls.getObject().position.set(0, 1.7, 0);
-
-let moveForward = false;
-let moveBackward = false;
-let moveLeft = false;
-let moveRight = false;
-let canJump = false;
-
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
-
-// マウスクリックで雪玉投擲
-document.addEventListener('click', () => {
-    if (!document.pointerLockElement) {
-        document.body.requestPointerLock();
-    } else if (canThrowSnowball && myId !== oniId) {
-        // 雪玉を投げる
-        const direction = new THREE.Vector3();
-        camera.getWorldDirection(direction);
-        
-        const playerPos = controls.getObject().position;
-        const targetPos = playerPos.clone().add(direction.multiplyScalar(20));
-        
-        ws.send(JSON.stringify({
-            type: 'throw_snowball',
-            playerId: myId,
-            startX: playerPos.x,
-            startY: playerPos.y,
-            startZ: playerPos.z,
-            targetX: targetPos.x,
-            targetY: targetPos.y,
-            targetZ: targetPos.z
-        }));
-        
-        // 雪玉投擲後はリセット
-        canThrowSnowball = false;
-        gameState.redItemsCollected = 0;
-        gameState.score += 100; // 投擲ボーナス
-        updateUI();
-    }
-});
-
-// 設定とジョイスティックの状態
-let isTabletMode = false;
-let joystickActive = false;
-let joystickPosition = { x: 0, y: 0 };
 
 // 設定UIの作成
 function createSettingsUI() {
@@ -1014,23 +787,24 @@ function createSettingsUI() {
     jumpButton.innerHTML = 'JUMP';
     jumpButton.style.cssText = `
         position: fixed;
-        bottom: 80px;
-        right: 50px;
-        width: 80px;
-        height: 80px;
-        background: rgba(0, 255, 0, 0.3);
-        border: 3px solid rgba(0, 255, 0, 0.7);
+        bottom: 60px;
+        right: 40px;
+        width: 120px;
+        height: 120px;
+        background: rgba(0, 255, 0, 0.4);
+        border: 4px solid rgba(0, 255, 0, 0.8);
         border-radius: 50%;
         display: none;
         justify-content: center;
         align-items: center;
         color: white;
         font-weight: bold;
-        font-size: 12px;
+        font-size: 18px;
         z-index: 1003;
         cursor: pointer;
         touch-action: none;
         user-select: none;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     `;
     
     document.body.appendChild(settingsButton);
@@ -1118,16 +892,16 @@ function setupJoystickControls() {
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         
         if (distance <= maxDistance) {
-            joystickPosition.x = deltaX / maxDistance;
-            joystickPosition.y = deltaY / maxDistance;
+            joystickPosition.x = -deltaX / maxDistance; // X軸反転
+            joystickPosition.y = -deltaY / maxDistance; // Y軸反転
             knob.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
         } else {
             const angle = Math.atan2(deltaY, deltaX);
             const clampedX = Math.cos(angle) * maxDistance;
             const clampedY = Math.sin(angle) * maxDistance;
             
-            joystickPosition.x = clampedX / maxDistance;
-            joystickPosition.y = clampedY / maxDistance;
+            joystickPosition.x = -clampedX / maxDistance; // X軸反転
+            joystickPosition.y = -clampedY / maxDistance; // Y軸反転
             knob.style.transform = `translate(calc(-50% + ${clampedX}px), calc(-50% + ${clampedY}px))`;
         }
         
@@ -1154,7 +928,7 @@ function setupJoystickControls() {
     // ジャンプボタン
     function jump() {
         if (canJump) {
-            velocity.y += 12;
+            velocity.y += 18; // ジャンプ力を増加
             canJump = false;
         }
     }
@@ -1164,9 +938,119 @@ function setupJoystickControls() {
         event.preventDefault();
         jump();
     });
+    
+    // タブレットモード用の視点操作
+    setupTouchLookControls();
 }
 
-// キーボードイベント（WSキーの修正）
+// タッチによる視点操作の設定
+function setupTouchLookControls() {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isLooking = false;
+    
+    function handleTouchStart(event) {
+        if (!isTabletMode) return;
+        
+        // ジョイスティックとジャンプボタンの範囲外でのみ視点操作
+        const touch = event.touches[0];
+        const joystickContainer = document.getElementById('joystick-container');
+        const jumpButton = document.getElementById('jump-button');
+        
+        // タッチがコントロール要素上でないかチェック
+        const touchedElement = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (joystickContainer && joystickContainer.contains(touchedElement)) return;
+        if (jumpButton && jumpButton.contains(touchedElement)) return;
+        
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        isLooking = true;
+        
+        event.preventDefault();
+    }
+    
+    function handleTouchMove(event) {
+        if (!isTabletMode || !isLooking) return;
+        
+        const touch = event.touches[0];
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
+        
+        // 視点の回転感度
+        const sensitivity = 0.002;
+        
+        // 水平回転（Y軸周り）
+        controls.getObject().rotation.y -= deltaX * sensitivity;
+        
+        // 垂直回転（カメラのX軸回り）
+        camera.rotation.x -= deltaY * sensitivity;
+        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+        
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        
+        event.preventDefault();
+    }
+    
+    function handleTouchEnd(event) {
+        if (!isTabletMode) return;
+        isLooking = false;
+        event.preventDefault();
+    }
+    
+    // タッチイベントリスナーを追加
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+}
+
+// PointerLockControls
+const controls = new PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
+
+controls.getObject().position.set(0, 1.7, 0);
+
+let moveForward = false;
+let moveBackward = false;
+let moveLeft = false;
+let moveRight = false;
+let canJump = false;
+
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+
+// マウスクリックで雪玉投擲
+document.addEventListener('click', () => {
+    if (!document.pointerLockElement) {
+        document.body.requestPointerLock();
+    } else if (canThrowSnowball && myId !== oniId) {
+        // 雪玉を投げる
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        
+        const playerPos = controls.getObject().position;
+        const targetPos = playerPos.clone().add(direction.multiplyScalar(20));
+        
+        ws.send(JSON.stringify({
+            type: 'throw_snowball',
+            playerId: myId,
+            startX: playerPos.x,
+            startY: playerPos.y,
+            startZ: playerPos.z,
+            targetX: targetPos.x,
+            targetY: targetPos.y,
+            targetZ: targetPos.z
+        }));
+        
+        // 雪玉投擲後はリセット
+        canThrowSnowball = false;
+        gameState.redItemsCollected = 0;
+        gameState.score += 100; // 投擲ボーナス
+        updateUI();
+    }
+});
+
+// キーボードイベント（WASD修正版）
 const keys = {};
 
 document.addEventListener('keydown', (event) => {
@@ -1179,20 +1063,18 @@ document.addEventListener('keydown', (event) => {
             moveBackward = true; // W = 後退
             break;
         case 'KeyA':
-            moveRight = true; // A = 右移動（修正）
+            moveRight = true; // A = 右移動
             break;
         case 'KeyS':
             moveForward = true; // S = 前進
             break;
         case 'KeyD':
-            moveLeft = true; // D = 左移動（修正）
+            moveLeft = true; // D = 左移動
             break;
         case 'Space':
             event.preventDefault();
             if (canJump) {
-                const jumpMultiplier = gameState.playerEffects.has('JUMP_BOOST') ? 
-                    POWER_UP_TYPES.JUMP_BOOST.multiplier : 1;
-                velocity.y += 12 * jumpMultiplier;
+                velocity.y += 18; // 強化されたジャンプ力
                 canJump = false;
             }
             break;
@@ -1204,16 +1086,16 @@ document.addEventListener('keyup', (event) => {
     
     switch (event.code) {
         case 'KeyW':
-            moveBackward = false; // W = 後退
+            moveBackward = false;
             break;
         case 'KeyA':
-            moveRight = false; // A = 右移動（修正）
+            moveRight = false;
             break;
         case 'KeyS':
-            moveForward = false; // S = 前進
+            moveForward = false;
             break;
         case 'KeyD':
-            moveLeft = false; // D = 左移動（修正）
+            moveLeft = false;
             break;
     }
 });
@@ -1246,23 +1128,51 @@ function sendPositionUpdate() {
     }
 }
 
-// パワーアップ効果の処理
-function processPowerUpEffects() {
+// UIの更新
+function updateUI() {
     const currentTime = Date.now();
+    const gameTime = Math.floor((currentTime - gameState.gameStartTime) / 1000);
+    const minutes = Math.floor(gameTime / 60);
+    const seconds = gameTime % 60;
     
-    for (const [type, effect] of gameState.playerEffects) {
-        if (currentTime > effect.endTime) {
-            gameState.playerEffects.delete(type);
-            console.log(`パワーアップ効果終了: ${effect.name}`);
-        }
+    document.getElementById('player-id').textContent = myId;
+    document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
+    document.getElementById('score').textContent = gameState.score;
+    document.getElementById('game-time').textContent = 
+        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    
+    // 赤いアイテム数の更新
+    const redItemsElement = document.getElementById('red-items');
+    const redItemsCountElement = document.getElementById('red-items-count');
+    const snowballStatusElement = document.getElementById('snowball-status');
+    
+    if (redItemsElement) {
+        redItemsElement.textContent = gameState.redItemsCollected;
     }
-}
-
-// 透明化効果の適用
-function applyInvisibilityEffect() {
-    if (gameState.playerEffects.has('INVISIBLE')) {
-        // 自分を半透明にする（見た目の変化）
-        // 実装は省略（必要に応じて）
+    
+    if (redItemsCountElement) {
+        redItemsCountElement.style.display = myId !== oniId ? 'block' : 'none';
+    }
+    
+    if (snowballStatusElement) {
+        snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
+    }
+    
+    // 鬼時間の更新
+    const oniTimeElement = document.getElementById('oni-time');
+    if (myId === oniId) {
+        oniTimeElement.style.display = 'block';
+        let totalOniTime = gameState.timeAsOni;
+        if (gameState.oniStartTime) {
+            totalOniTime += currentTime - gameState.oniStartTime;
+        }
+        const oniSeconds = Math.floor(totalOniTime / 1000);
+        const oniMins = Math.floor(oniSeconds / 60);
+        const oniSecs = oniSeconds % 60;
+        document.getElementById('oni-duration').textContent = 
+            `${oniMins.toString().padStart(2, '0')}:${oniSecs.toString().padStart(2, '0')}`;
+    } else {
+        oniTimeElement.style.display = 'none';
     }
 }
 
@@ -1308,78 +1218,28 @@ function updateMinimap() {
         ctx.fill();
     }
     
-    // オーブの位置
+    // 赤いアイテムの位置
     ctx.fillStyle = '#ff4444';
-    for (const id in orbs) {
-        const orb = orbs[id];
-        const orbX = centerX + orb.position.x * scale;
-        const orbZ = centerY + orb.position.z * scale;
+    for (const id in redItems) {
+        const item = redItems[id];
+        const itemX = centerX + item.position.x * scale;
+        const itemZ = centerY + item.position.z * scale;
         
         ctx.beginPath();
-        ctx.arc(orbX, orbZ, 2, 0, Math.PI * 2);
+        ctx.arc(itemX, itemZ, 2, 0, Math.PI * 2);
         ctx.fill();
     }
     
-    // パワーアップの位置
-    ctx.fillStyle = '#ffff00';
-    for (const id in powerUps) {
-        const powerUp = powerUps[id];
-        const puX = centerX + powerUp.position.x * scale;
-        const puZ = centerY + powerUp.position.z * scale;
-        
-        ctx.beginPath();
-        ctx.arc(puX, puZ, 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
-}
-
-// UIの更新
-function updateUI() {
-    const currentTime = Date.now();
-    const gameTime = Math.floor((currentTime - gameState.gameStartTime) / 1000);
-    const minutes = Math.floor(gameTime / 60);
-    const seconds = gameTime % 60;
-    
-    document.getElementById('player-id').textContent = myId;
-    document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
-    document.getElementById('score').textContent = gameState.score;
-    document.getElementById('game-time').textContent = 
-        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    // 鬼時間の更新
-    const oniTimeElement = document.getElementById('oni-time');
-    if (myId === oniId) {
-        oniTimeElement.style.display = 'block';
-        let totalOniTime = gameState.timeAsOni;
-        if (gameState.oniStartTime) {
-            totalOniTime += currentTime - gameState.oniStartTime;
-        }
-        const oniSeconds = Math.floor(totalOniTime / 1000);
-        const oniMins = Math.floor(oniSeconds / 60);
-        const oniSecs = oniSeconds % 60;
-        document.getElementById('oni-duration').textContent = 
-            `${oniMins.toString().padStart(2, '0')}:${oniSecs.toString().padStart(2, '0')}`;
-    } else {
-        oniTimeElement.style.display = 'none';
-    }
-    
-    // アクティブ効果の表示
-    const effectsElement = document.getElementById('active-effects');
-    effectsElement.innerHTML = '';
-    
-    for (const [type, effect] of gameState.playerEffects) {
-        const timeLeft = Math.max(0, effect.endTime - currentTime);
-        if (timeLeft > 0) {
-            const div = document.createElement('div');
-            div.style.cssText = `
-                color: #${effect.color.toString(16).padStart(6, '0')};
-                font-size: 12px;
-                margin: 2px 0;
-            `;
-            div.textContent = `${effect.name}: ${Math.ceil(timeLeft / 1000)}秒`;
-            effectsElement.appendChild(div);
-        }
-    }
+    // 建物の表示
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 1;
+    const buildingSize = 40 * scale;
+    ctx.strokeRect(
+        centerX - buildingSize/2, 
+        centerY - buildingSize/2, 
+        buildingSize, 
+        buildingSize
+    );
 }
 
 // アニメーションループ
@@ -1390,12 +1250,6 @@ function animate() {
 
     const time = performance.now();
     const delta = Math.min((time - prevTime) / 1000, 1/30);
-
-    // パワーアップ効果の処理
-    // processPowerUpEffects(); // 削除
-
-    // 移動速度の計算
-    const speedMultiplier = 1; // パワーアップ削除により固定
 
     // 摩擦力の適用
     velocity.x *= Math.pow(0.1, delta);
@@ -1419,7 +1273,7 @@ function animate() {
     // ジョイスティック入力（タブレットモード時）
     if (isTabletMode && joystickActive) {
         inputX = joystickPosition.x;
-        inputZ = -joystickPosition.y; // Y軸を反転
+        inputZ = joystickPosition.y;
     }
     
     // 入力の正規化
@@ -1429,8 +1283,8 @@ function animate() {
         inputZ /= inputLength;
     }
 
-    // 移動速度の適用（大幅に減速）
-    const moveSpeed = 80.0 * speedMultiplier; // 300.0から80.0に減速
+    // 移動速度の適用（減速）
+    const moveSpeed = 80.0; // 遅い移動速度
     velocity.z -= inputZ * moveSpeed * delta;
     velocity.x -= inputX * moveSpeed * delta;
     
@@ -1443,6 +1297,7 @@ function animate() {
     const playerRadius = 1.0;
     const playerPos = controls.getObject().position;
     
+    // 外周の壁との衝突判定
     if (playerPos.x - playerRadius < -WALL_SIZE/2 + 1) {
         playerPos.x = -WALL_SIZE/2 + 1 + playerRadius;
         velocity.x = 0;
@@ -1458,6 +1313,30 @@ function animate() {
     if (playerPos.z + playerRadius > WALL_SIZE/2 - 1) {
         playerPos.z = WALL_SIZE/2 - 1 - playerRadius;
         velocity.z = 0;
+    }
+    
+    // 建物との衝突判定
+    const BUILDING_SIZE = 20;
+    const buildingDistance = Math.sqrt(playerPos.x * playerPos.x + playerPos.z * playerPos.z);
+    
+    if (buildingDistance > BUILDING_SIZE - playerRadius && 
+        buildingDistance < BUILDING_SIZE + 5 + playerRadius && 
+        playerPos.y < 15) {
+        
+        // 入口の判定
+        const isNorthEntrance = Math.abs(playerPos.x) < 6 && playerPos.z < -BUILDING_SIZE + 2;
+        const isSouthEntrance = Math.abs(playerPos.x) < 6 && playerPos.z > BUILDING_SIZE - 2;
+        const isEastEntrance = playerPos.x > BUILDING_SIZE - 2 && Math.abs(playerPos.z) < 6;
+        const isWestEntrance = playerPos.x < -BUILDING_SIZE + 2 && Math.abs(playerPos.z) < 6;
+        
+        if (!isNorthEntrance && !isSouthEntrance && !isEastEntrance && !isWestEntrance) {
+            const pushBackDistance = BUILDING_SIZE + playerRadius;
+            const angle = Math.atan2(playerPos.z, playerPos.x);
+            playerPos.x = Math.cos(angle) * pushBackDistance;
+            playerPos.z = Math.sin(angle) * pushBackDistance;
+            velocity.x = 0;
+            velocity.z = 0;
+        }
     }
     
     // 地面との衝突判定
@@ -1557,6 +1436,6 @@ function showMessage(text, type = 'info', duration = 3000) {
             messageElement.style.display = 'none';
         }, duration);
     } else {
-        console.log(text); // フォールバック
+        console.log(text);
     }
 }
