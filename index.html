@@ -142,6 +142,69 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             display: none;
         }
+        
+        /* 画面中央の十字 */
+        .crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 1px;
+        }
+        
+        .crosshair::before {
+            width: 2px;
+            height: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .crosshair::after {
+            width: 20px;
+            height: 2px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        /* タブレット対応 */
+        @media (max-width: 768px) {
+            .game-instructions {
+                font-size: 12px;
+                padding: 10px 15px;
+            }
+            
+            #game-ui {
+                font-size: 14px;
+                padding: 10px;
+                min-width: 150px;
+            }
+            
+            #minimap {
+                width: 120px;
+                height: 120px;
+            }
+        }
+        
+        /* タッチデバイス用のスタイル */
+        .touch-control {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
     </style>
 </head>
 <body>
@@ -153,13 +216,17 @@
         <div class="loading-text" style="font-size: 0.9em;">クリックしてゲームを開始</div>
     </div>
 
+    <!-- 画面中央の十字 -->
+    <div class="crosshair"></div>
+
     <!-- ゲーム操作説明 -->
     <div id="game-instructions" class="game-instructions">
         <div><strong>🎮 操作方法</strong></div>
         <div>WASD: 移動 | Space: ジャンプ | マウス: 視点移動</div>
         <div class="controls-hint">
             🟢 オーブを集めてスコアアップ | ⚡ パワーアップで特殊能力獲得<br>
-            👹 鬼は他のプレイヤーにタッチして役割交代
+            👹 鬼は他のプレイヤーにタッチして役割交代<br>
+            ⚙️ 右上のSettingsからタブレットモード切替可能
         </div>
     </div>
 
