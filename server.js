@@ -121,8 +121,30 @@ function generateRedItems() {
     console.log(`${RED_ITEM_COUNT}個の赤いアイテムを生成しました（実際の生成数: ${Object.keys(redItems).length}）`);
 }
 
-// 初期生成
+// 初期生成（サーバー起動時に確実に実行）
+console.log('サーバー起動時の赤いアイテム生成...');
 generateRedItems();
+
+// 生成確認
+console.log(`生成された赤いアイテム一覧:`);
+for (const itemId in redItems) {
+    console.log(`  ${itemId}: (${redItems[itemId].x}, ${redItems[itemId].y}, ${redItems[itemId].z})`);
+}
+
+// 強制的に赤いアイテムを生成（フォールバック）
+if (Object.keys(redItems).length === 0) {
+    console.log('緊急: 赤いアイテムが0個なので強制生成します');
+    for (let i = 0; i < RED_ITEM_COUNT; i++) {
+        const itemId = `red_item_${i}`;
+        redItems[itemId] = {
+            id: itemId,
+            x: (Math.random() - 0.5) * 100,
+            y: 1.0,
+            z: (Math.random() - 0.5) * 100,
+        };
+    }
+    console.log(`強制生成完了: ${Object.keys(redItems).length}個`);
+}
 
 // 鬼の自動選択
 function selectRandomOni() {
@@ -241,16 +263,22 @@ wss.on('connection', (ws, req) => {
             
             switch (data.type) {
                 case 'get_id':
+                    console.log(`プレイヤー ${id} に初期化データを送信中...`);
+                    console.log(`送信予定の赤いアイテム数: ${Object.keys(redItems).length}`);
+                    
                     // 初期化データを送信
-                    ws.send(JSON.stringify({ 
+                    const initData = { 
                         type: 'init', 
                         id: id, 
                         players: players, 
                         redItems: redItems,
                         oniId: oniId 
-                    }));
+                    };
                     
-                    console.log(`初期化データ送信: プレイヤー数=${Object.keys(players).length}, 赤いアイテム数=${Object.keys(redItems).length}`);
+                    console.log('送信データ:', JSON.stringify(initData, null, 2));
+                    ws.send(JSON.stringify(initData));
+                    
+                    console.log(`初期化データ送信完了: プレイヤー数=${Object.keys(players).length}, 赤いアイテム数=${Object.keys(redItems).length}`);
                     
                     // 他のプレイヤーに新しいプレイヤーの参加を通知
                     broadcast({ 
@@ -292,7 +320,9 @@ wss.on('connection', (ws, req) => {
                     break;
                     
                 case 'collect_red_item':
+                    console.log(`プレイヤー ${id} が赤いアイテム ${data.itemId} を取得しようとしています`);
                     if (redItems[data.itemId]) {
+                        console.log(`赤いアイテム ${data.itemId} を削除し、スコアを更新します`);
                         delete redItems[data.itemId];
                         players[id].score += 10;
                         broadcast({ 
@@ -301,13 +331,17 @@ wss.on('connection', (ws, req) => {
                             playerId: id
                         });
                         console.log(`赤いアイテム ${data.itemId} が ${id} によって取得されました`);
+                        console.log(`残り赤いアイテム数: ${Object.keys(redItems).length}`);
                         
                         // すべての赤いアイテムが取得された場合、新しいアイテムを生成
                         if (Object.keys(redItems).length === 0) {
                             console.log('すべての赤いアイテムが取得されました。新しいアイテムを生成します。');
                             generateRedItems();
                             broadcast({ type: 'items_respawned', redItems: redItems });
+                            console.log(`新しい赤いアイテムを ${Object.keys(redItems).length}個生成しました`);
                         }
+                    } else {
+                        console.log(`エラー: 赤いアイテム ${data.itemId} が存在しません`);
                     }
                     break;
 

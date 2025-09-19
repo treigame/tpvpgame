@@ -37,11 +37,13 @@ ws.onopen = () => {
 
 ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    console.log('受信したメッセージ:', data.type, data);
     
     if (data.type === 'init') {
         myId = data.id;
         oniId = data.oniId;
         console.log(`割り当てられたID: ${myId}`);
+        console.log(`受信した赤いアイテム数: ${Object.keys(data.redItems || {}).length}`);
         
         // UI初期化
         createUI();
@@ -58,9 +60,14 @@ ws.onmessage = (event) => {
                 createPlayerMesh(id, data.players[id]);
             }
         }
+        
+        // 赤いアイテムの作成（デバッグ情報付き）
+        console.log('赤いアイテム作成開始...');
         for (const id in data.redItems || {}) {
+            console.log(`赤いアイテム作成: ${id}`, data.redItems[id]);
             createRedItemMesh(id, data.redItems[id]);
         }
+        console.log(`赤いアイテム作成完了: ${Object.keys(redItems).length}個`);
         
         updateUI();
     } else if (data.type === 'player_update') {
@@ -569,12 +576,14 @@ function removeSword(mesh) {
     }
 }
 
-// 赤いアイテムメッシュの作成
+// 赤いアイテムメッシュの作成（デバッグ強化版）
 function createRedItemMesh(id, data) {
-    const geometry = new THREE.SphereGeometry(0.4, 12, 12);
+    console.log(`赤いアイテムメッシュ作成: ${id}`, data);
+    
+    const geometry = new THREE.SphereGeometry(0.6, 12, 12); // サイズを大きく
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
-        emissive: 0x440000,
+        emissive: 0x660000, // より明るい発光
         roughness: 0.2,
         metalness: 0.1
     });
@@ -583,6 +592,9 @@ function createRedItemMesh(id, data) {
     mesh.castShadow = true;
     scene.add(mesh);
     redItems[id] = mesh;
+    
+    console.log(`赤いアイテム ${id} を位置 (${data.x}, ${data.y}, ${data.z}) に作成しました`);
+    console.log(`現在のシーン内オブジェクト数: ${scene.children.length}`);
     
     return mesh;
 }
@@ -1361,19 +1373,21 @@ function animate() {
         canJump = true;
     }
 
-    // 赤いアイテムとの衝突判定
+    // 赤いアイテムとの衝突判定（デバッグ強化）
     for (const id in redItems) {
         const item = redItems[id];
         const distance = controls.getObject().position.distanceTo(item.position);
-        if (distance < 1.0) {
+        if (distance < 1.5) { // 判定範囲を拡大
+            console.log(`赤いアイテム ${id} に接触！距離: ${distance.toFixed(2)}`);
             ws.send(JSON.stringify({ type: 'collect_red_item', itemId: id }));
         }
     }
 
-    // 赤いアイテムの回転アニメーション
+    // 赤いアイテムの回転アニメーション（より目立つように）
     for (const id in redItems) {
-        redItems[id].rotation.y += delta * 3;
-        redItems[id].position.y = 0.5 + Math.sin(time * 0.004 + parseFloat(id.slice(8)) * 0.5) * 0.2;
+        redItems[id].rotation.y += delta * 4; // 回転速度アップ
+        redItems[id].rotation.x += delta * 2; // X軸回転も追加
+        redItems[id].position.y = 0.8 + Math.sin(time * 0.005 + parseFloat(id.slice(8)) * 0.5) * 0.4; // より大きな浮遊
     }
 
     // 位置情報の送信
