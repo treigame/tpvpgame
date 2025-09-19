@@ -8,13 +8,12 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 let players = {};
-let orbs = {};
-let powerUps = {};
+let redItems = {}; // 赤いアイテム（オーブの代替）
+let snowballs = {}; // 投げられた雪玉
 let oniId = null;
-const ORB_COUNT = 30;
-const POWERUP_COUNT = 8;
+const RED_ITEM_COUNT = 20; // 赤いアイテムの数
 let playerCounter = 0;
-let powerUpCounter = 0;
+let snowballCounter = 0;
 
 // パワーアップの種類
 const POWER_UP_TYPES = ['SPEED_BOOST', 'INVISIBLE', 'SHIELD', 'JUMP_BOOST'];
@@ -59,11 +58,12 @@ function sendToPlayer(playerId, message) {
     });
 }
 
-// オーブ生成関数
+// オーブ生成関数（建物を考慮）
 function generateOrbs() {
     orbs = {};
     const BOUNDARY = 80;
     const MIN_DISTANCE = 8;
+    const BUILDING_RADIUS = 25; // 建物の影響範囲
     
     for (let i = 0; i < ORB_COUNT; i++) {
         let x, z, attempts = 0;
@@ -74,6 +74,17 @@ function generateOrbs() {
             z = (Math.random() - 0.5) * BOUNDARY * 2;
             
             validPosition = true;
+            
+            // 建物の中心部を避ける（1階の広間は除く）
+            const distanceFromCenter = Math.sqrt(x * x + z * z);
+            if (distanceFromCenter < BUILDING_RADIUS) {
+                // 1階の広間（中央部分）はOK、建物の壁部分は避ける
+                if (distanceFromCenter > 15) {
+                    validPosition = false;
+                    attempts++;
+                    continue;
+                }
+            }
             
             // 他のオーブとの距離をチェック
             for (const existingOrbId in orbs) {
@@ -115,14 +126,15 @@ function generateOrbs() {
         };
     }
     
-    console.log(`${ORB_COUNT}個のオーブを生成しました`);
+    console.log(`${ORB_COUNT}個のオーブを生成しました（建物配慮版）`);
 }
 
-// パワーアップ生成関数
+// パワーアップ生成関数（建物を考慮）
 function generatePowerUps() {
     powerUps = {};
     const BOUNDARY = 70;
     const MIN_DISTANCE = 15;
+    const BUILDING_RADIUS = 25;
     
     for (let i = 0; i < POWERUP_COUNT; i++) {
         let x, z, attempts = 0;
@@ -133,6 +145,16 @@ function generatePowerUps() {
             z = (Math.random() - 0.5) * BOUNDARY * 2;
             
             validPosition = true;
+            
+            // 建物の中心部を避ける
+            const distanceFromCenter = Math.sqrt(x * x + z * z);
+            if (distanceFromCenter < BUILDING_RADIUS) {
+                if (distanceFromCenter > 15) {
+                    validPosition = false;
+                    attempts++;
+                    continue;
+                }
+            }
             
             // 他のパワーアップとの距離をチェック
             for (const existingPowerUpId in powerUps) {
@@ -177,11 +199,92 @@ function generatePowerUps() {
         };
     }
     
+    console.log(`${POWERUP_COUNT}個のパワーアップを生成しました（建物配慮版）`);
+}bs[existingOrbId];
+                const distance = Math.sqrt(
+                    Math.pow(x - existingOrb.x, 2) + 
+                    Math.pow(z - existingOrb.z, 2)
+                );
+                
+                if (distance < MIN_DISTANCE) {
+                    validPosition = false;
+                    break;
+                }
+            }
+            
+            attempts++;
+        }
+        
+        const powerUpId = `powerup_${powerUpCounter++}`;
+        const randomType = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
+        
+        powerUps[powerUpId] = {
+            id: powerUpId,
+            type: randomType,
+            x: x || (Math.random() - 0.5) * BOUNDARY,
+            y: 1.0,
+            z: z || (Math.random() - 0.5) * BOUNDARY,
+        };
+    }
+    
     console.log(`${POWERUP_COUNT}個のパワーアップを生成しました`);
 }
 
-// 新しいパワーアップを単体で生成
-function spawnRandomPowerUp() {
+// 雪玉の当たり判定
+function checkSnowballHit(snowballId, snowball) {
+    if (!snowballs[snowballId]) return;
+    
+    const targetPos = { x: snowball.targetX, y: snowball.targetY, z: snowball.targetZ };
+    
+    // 鬼との距離をチェック
+    if (players[oniId]) {
+        const oniPos = players[oniId];
+        const distance = Math.sqrt(
+            Math.pow(targetPos.x - oniPos.x, 2) + 
+            Math.pow(targetPos.z - oniPos.z, 2)
+        );
+        
+        if (distance < 3) { // 3ユニット以内で命中
+            broadcast({ 
+                type: 'snowball_hit', 
+                snowballId: snowballId,
+                hitPlayerId: oniId
+            });
+            
+            console.log(`雪玉が鬼 ${oniId} に命中！ゲームオーバー！`);
+            
+            // ゲームリセット（3秒後）
+            setTimeout(() => {
+                resetGame();
+            }, 3000);
+        }
+    }
+    
+    // 雪玉を削除
+    delete snowballs[snowballId];
+}
+
+// ゲームリセット
+function resetGame() {
+    console.log('ゲームをリセットします...');
+    
+    // 全プレイヤーにリセット通知
+    broadcast({ type: 'game_reset' });
+    
+    // ゲーム状態をリセット
+    generateRedItems();
+    snowballs = {};
+    snowballCounter = 0;
+    
+    // 新しい鬼を選択
+    selectRandomOni();
+    
+    broadcast({ 
+        type: 'game_restarted',
+        redItems: redItems,
+        oniId: oniId
+    });
+}
     const BOUNDARY = 70;
     const MIN_DISTANCE = 15;
     let attempts = 0;
@@ -236,8 +339,7 @@ function spawnRandomPowerUp() {
 }
 
 // 初期生成
-generateOrbs();
-generatePowerUps();
+generateRedItems();
 
 // 鬼の自動選択
 function selectRandomOni() {
@@ -305,8 +407,7 @@ wss.on('connection', (ws, req) => {
                         type: 'init', 
                         id: id, 
                         players: players, 
-                        orbs: orbs,
-                        powerUps: powerUps,
+                        redItems: redItems,
                         oniId: oniId 
                     }));
                     
@@ -349,56 +450,87 @@ wss.on('connection', (ws, req) => {
                     }
                     break;
                     
-                case 'eat_orb':
-                    if (orbs[data.orbId]) {
-                        delete orbs[data.orbId];
+                case 'collect_red_item':
+                    if (redItems[data.itemId]) {
+                        delete redItems[data.itemId];
                         players[id].score += 10;
-                        broadcast({ type: 'orb_eaten', orbId: data.orbId });
-                        console.log(`オーブ ${data.orbId} が ${id} によって取得されました`);
+                        broadcast({ 
+                            type: 'red_item_collected', 
+                            itemId: data.itemId,
+                            playerId: id
+                        });
+                        console.log(`赤いアイテム ${data.itemId} が ${id} によって取得されました`);
                         
-                        // すべてのオーブが取得された場合、新しいオーブを生成
-                        if (Object.keys(orbs).length === 0) {
-                            console.log('すべてのオーブが取得されました。新しいオーブを生成します。');
-                            generateOrbs();
-                            broadcast({ type: 'orbs_respawned', orbs: orbs });
+                        // すべての赤いアイテムが取得された場合、新しいアイテムを生成
+                        if (Object.keys(redItems).length === 0) {
+                            console.log('すべての赤いアイテムが取得されました。新しいアイテムを生成します。');
+                            generateRedItems();
+                            broadcast({ type: 'items_respawned', redItems: redItems });
                         }
                     }
                     break;
 
-                case 'collect_powerup':
-                    if (powerUps[data.powerUpId]) {
-                        const powerUpType = powerUps[data.powerUpId].type;
-                        delete powerUps[data.powerUpId];
-                        players[id].score += 50;
-                        
-                        broadcast({ 
-                            type: 'powerup_collected', 
-                            powerUpId: data.powerUpId,
+                case 'throw_snowball':
+                    if (id !== oniId) { // 鬼以外が投げる場合のみ
+                        const snowballId = `snowball_${snowballCounter++}`;
+                        const snowball = {
+                            id: snowballId,
                             playerId: id,
-                            type: powerUpType
+                            x: data.startX,
+                            y: data.startY,
+                            z: data.startZ,
+                            targetX: data.targetX,
+                            targetY: data.targetY,
+                            targetZ: data.targetZ,
+                            startTime: Date.now()
+                        };
+                        
+                        snowballs[snowballId] = snowball;
+                        broadcast({ 
+                            type: 'snowball_thrown', 
+                            snowballId: snowballId,
+                            snowball: snowball
                         });
                         
-                        console.log(`パワーアップ ${data.powerUpId} (${powerUpType}) が ${id} によって取得されました`);
+                        console.log(`雪玉 ${snowballId} が ${id} によって投げられました`);
                         
-                        // 新しいパワーアップを遅延生成
+                        // 雪玉の当たり判定（簡易版）
                         setTimeout(() => {
-                            spawnRandomPowerUp();
-                        }, 5000 + Math.random() * 10000); // 5-15秒後
+                            checkSnowballHit(snowballId, snowball);
+                        }, 1000); // 1秒後に当たり判定
+                    }
+                    break;
+
+                case 'show_exclamation':
+                    // ！マーク表示要求
+                    broadcast({ 
+                        type: 'show_exclamation', 
+                        playerId: data.playerId 
+                    });
+                    break;
+
+                case 'hide_exclamation':
+                    // ！マーク非表示要求
+                    broadcast({ 
+                        type: 'hide_exclamation', 
+                        playerId: data.playerId 
+                    });
+                    break;
+
+                case 'become_oni':
+                    // ！マーククリックで鬼交代
+                    if (data.playerId !== oniId) {
+                        const oldOni = oniId;
+                        oniId = data.playerId;
+                        
+                        broadcast({ type: 'oni_changed', oniId: oniId });
+                        console.log(`！マーククリックで鬼が交代しました: ${oldOni} → ${oniId}`);
                     }
                     break;
                     
                 case 'tag_player':
-                    // 鬼ごっこの処理
-                    if (data.id === oniId && data.id === id && players[data.taggedId]) {
-                        const oldOni = oniId;
-                        oniId = data.taggedId;
-                        
-                        // スコア更新
-                        players[oldOni].score += 100; // 鬼が誰かにタッチした時のボーナス
-                        
-                        broadcast({ type: 'oni_changed', oniId: oniId });
-                        console.log(`鬼が交代しました: ${oldOni} → ${oniId}`);
-                    }
+                    // 直接タッチによる鬼交代は削除
+                    // 新システムでは！マーククリックのみで交代
                     break;
                     
                 default:
@@ -474,19 +606,15 @@ const cleanupInterval = setInterval(() => {
     }
 }, 2 * 60 * 1000);
 
-// パワーアップの定期生成（30秒間隔）
-const powerUpSpawnInterval = setInterval(() => {
-    if (Object.keys(powerUps).length < POWERUP_COUNT) {
-        spawnRandomPowerUp();
-    }
-}, 30000);
+// パワーアップの定期生成を削除
+// const powerUpSpawnInterval = setInterval(() => { ... }, 30000);
 
 // ゲーム統計の定期出力（10分間隔）
 const statsInterval = setInterval(() => {
     console.log('=== ゲーム統計 ===');
     console.log(`プレイヤー数: ${Object.keys(players).length}`);
-    console.log(`オーブ数: ${Object.keys(orbs).length}`);
-    console.log(`パワーアップ数: ${Object.keys(powerUps).length}`);
+    console.log(`赤いアイテム数: ${Object.keys(redItems).length}`);
+    console.log(`雪玉数: ${Object.keys(snowballs).length}`);
     console.log(`現在の鬼: ${oniId}`);
     console.log(`アクティブ接続数: ${wss.clients.size}`);
     
@@ -508,7 +636,6 @@ function gracefulShutdown() {
     
     clearInterval(healthCheckInterval);
     clearInterval(cleanupInterval);
-    clearInterval(powerUpSpawnInterval);
     clearInterval(statsInterval);
     
     // すべてのクライアントに切断を通知
@@ -544,7 +671,7 @@ server.listen(port, () => {
     console.log(`🎮 3D鬼ごっこサーバーが起動しました`);
     console.log(`📍 ポート: ${port}`);
     console.log(`🌐 URL: http://localhost:${port}`);
-    console.log(`🎯 オーブ数: ${ORB_COUNT}`);
-    console.log(`⚡ パワーアップ数: ${POWERUP_COUNT}`);
+    console.log(`🎯 赤いアイテム数: ${RED_ITEM_COUNT}`);
+    console.log(`❄️ 雪玉システム有効`);
     console.log(`=================================`);
 });
