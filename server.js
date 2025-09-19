@@ -59,23 +59,26 @@ function sendToPlayer(playerId, message) {
 function generateRedItems() {
     redItems = {};
     const BOUNDARY = 80;
-    const MIN_DISTANCE = 8;
+    const MIN_DISTANCE = 6; // 最小距離を小さくして生成しやすく
     const BUILDING_RADIUS = 25;
+    
+    console.log('赤いアイテム生成開始...');
     
     for (let i = 0; i < RED_ITEM_COUNT; i++) {
         let x, z, attempts = 0;
         let validPosition = false;
         
-        while (!validPosition && attempts < 100) {
-            x = (Math.random() - 0.5) * BOUNDARY * 2;
-            z = (Math.random() - 0.5) * BOUNDARY * 2;
+        while (!validPosition && attempts < 200) { // 試行回数を増加
+            // より広い範囲で生成
+            x = (Math.random() - 0.5) * BOUNDARY * 2.2;
+            z = (Math.random() - 0.5) * BOUNDARY * 2.2;
             
             validPosition = true;
             
             // 建物の中心部を避ける（1階の広間は除く）
             const distanceFromCenter = Math.sqrt(x * x + z * z);
             if (distanceFromCenter < BUILDING_RADIUS) {
-                if (distanceFromCenter > 15) {
+                if (distanceFromCenter > 12) { // 範囲を狭めて広間を広く
                     validPosition = false;
                     attempts++;
                     continue;
@@ -96,19 +99,26 @@ function generateRedItems() {
                 }
             }
             
+            // 境界チェック
+            if (Math.abs(x) > BOUNDARY || Math.abs(z) > BOUNDARY) {
+                validPosition = false;
+            }
+            
             attempts++;
         }
         
         const itemId = `red_item_${i}`;
         redItems[itemId] = {
             id: itemId,
-            x: x || (Math.random() - 0.5) * BOUNDARY,
-            y: 0.5,
-            z: z || (Math.random() - 0.5) * BOUNDARY,
+            x: validPosition ? x : (Math.random() - 0.5) * 60, // フォールバック位置
+            y: 0.8, // 少し高めに配置
+            z: validPosition ? z : (Math.random() - 0.5) * 60,
         };
+        
+        console.log(`赤いアイテム ${itemId} 生成: (${redItems[itemId].x.toFixed(1)}, ${redItems[itemId].y}, ${redItems[itemId].z.toFixed(1)})`);
     }
     
-    console.log(`${RED_ITEM_COUNT}個の赤いアイテムを生成しました`);
+    console.log(`${RED_ITEM_COUNT}個の赤いアイテムを生成しました（実際の生成数: ${Object.keys(redItems).length}）`);
 }
 
 // 初期生成
@@ -240,6 +250,8 @@ wss.on('connection', (ws, req) => {
                         oniId: oniId 
                     }));
                     
+                    console.log(`初期化データ送信: プレイヤー数=${Object.keys(players).length}, 赤いアイテム数=${Object.keys(redItems).length}`);
+                    
                     // 他のプレイヤーに新しいプレイヤーの参加を通知
                     broadcast({ 
                         type: 'player_update', 
@@ -358,8 +370,17 @@ wss.on('connection', (ws, req) => {
                     break;
                     
                 case 'tag_player':
-                    // 直接タッチによる鬼交代は削除
-                    // 新システムでは！マーククリックのみで交代
+                    // 直接タッチによる鬼交代を復活
+                    if (data.id === oniId && data.id === id && players[data.taggedId]) {
+                        const oldOni = oniId;
+                        oniId = data.taggedId;
+                        
+                        // スコア更新
+                        players[oldOni].score += 100;
+                        
+                        broadcast({ type: 'oni_changed', oniId: oniId });
+                        console.log(`直接タッチで鬼が交代しました: ${oldOni} → ${oniId}`);
+                    }
                     break;
                     
                 default:

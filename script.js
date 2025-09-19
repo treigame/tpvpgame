@@ -1293,29 +1293,36 @@ function animate() {
     controls.moveForward(velocity.z * delta);
     controls.getObject().position.y += velocity.y * delta;
     
-    // 壁との衝突判定
+    // 壁との衝突判定（白い壁のような性質）
     const playerRadius = 1.0;
     const playerPos = controls.getObject().position;
+    const prevPosition = controls.getObject().position.clone();
     
-    // 外周の壁との衝突判定
+    // 外周の壁との衝突判定（白い壁のような押し戻し）
+    let hitWall = false;
+    
     if (playerPos.x - playerRadius < -WALL_SIZE/2 + 1) {
         playerPos.x = -WALL_SIZE/2 + 1 + playerRadius;
         velocity.x = 0;
+        hitWall = true;
     }
     if (playerPos.x + playerRadius > WALL_SIZE/2 - 1) {
         playerPos.x = WALL_SIZE/2 - 1 - playerRadius;
         velocity.x = 0;
+        hitWall = true;
     }
     if (playerPos.z - playerRadius < -WALL_SIZE/2 + 1) {
         playerPos.z = -WALL_SIZE/2 + 1 + playerRadius;
         velocity.z = 0;
+        hitWall = true;
     }
     if (playerPos.z + playerRadius > WALL_SIZE/2 - 1) {
         playerPos.z = WALL_SIZE/2 - 1 - playerRadius;
         velocity.z = 0;
+        hitWall = true;
     }
     
-    // 建物との衝突判定
+    // 建物との衝突判定（白い壁のような性質）
     const BUILDING_SIZE = 20;
     const buildingDistance = Math.sqrt(playerPos.x * playerPos.x + playerPos.z * playerPos.z);
     
@@ -1330,13 +1337,21 @@ function animate() {
         const isWestEntrance = playerPos.x < -BUILDING_SIZE + 2 && Math.abs(playerPos.z) < 6;
         
         if (!isNorthEntrance && !isSouthEntrance && !isEastEntrance && !isWestEntrance) {
-            const pushBackDistance = BUILDING_SIZE + playerRadius;
+            // 白い壁のような押し戻し
+            const pushBackDistance = BUILDING_SIZE + playerRadius + 0.5;
             const angle = Math.atan2(playerPos.z, playerPos.x);
             playerPos.x = Math.cos(angle) * pushBackDistance;
             playerPos.z = Math.sin(angle) * pushBackDistance;
             velocity.x = 0;
             velocity.z = 0;
+            hitWall = true;
         }
+    }
+    
+    // 壁に触れた時の追加処理（完全停止）
+    if (hitWall) {
+        velocity.x = 0;
+        velocity.z = 0;
     }
     
     // 地面との衝突判定
@@ -1381,7 +1396,7 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 鬼ごっこの判定（！マーク表示機能付き）
+// 鬼ごっこの判定（直接タッチ + ！マーク表示機能付き）
 setInterval(() => {
     if (!isConnected) return;
     
@@ -1392,7 +1407,15 @@ setInterval(() => {
             const otherPlayer = players[id];
             const distance = controls.getObject().position.distanceTo(otherPlayer.position);
             
-            if (distance < 2.5) {
+            if (distance < 2.0) {
+                // 直接タッチで鬼交代
+                ws.send(JSON.stringify({ 
+                    type: 'tag_player',
+                    id: myId,
+                    taggedId: id 
+                }));
+                break;
+            } else if (distance < 2.5) {
                 // 距離が近い場合、相手に！マークを表示
                 ws.send(JSON.stringify({ 
                     type: 'show_exclamation',
