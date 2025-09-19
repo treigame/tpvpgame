@@ -51,14 +51,14 @@ ws.onmessage = (event) => {
         oniId = data.oniId;
         console.log(`鬼が交代しました: ${oniId}`);
         
-        // 旧鬼の剣を削除
-        if (oldOni === myId && camera.sword) {
-            removeSword(camera);
+        if (oldOni === myId) {
+            if (camera.sword) {
+                removeSword(camera);
+            }
         } else if (players[oldOni] && players[oldOni].sword) {
             removeSword(players[oldOni]);
         }
         
-        // 新鬼に剣を追加
         if (oniId === myId) {
             if (!camera.sword) {
                 addSword(camera);
@@ -91,22 +91,24 @@ plane.position.y = -1;
 scene.add(plane);
 
 // 白い壁の作成
-const wallGeometry = new THREE.BoxGeometry(200, 20, 1);
+const WALL_SIZE = 200;
+const WALL_HEIGHT = 20;
 const wallMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-const wall1 = new THREE.Mesh(wallGeometry, wallMaterial);
-wall1.position.set(0, 9, -100);
+
+const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 1), wallMaterial);
+wall1.position.set(0, (WALL_HEIGHT / 2) - 1, -WALL_SIZE / 2);
 scene.add(wall1);
 
-const wall2 = new THREE.Mesh(wallGeometry, wallMaterial);
-wall2.position.set(0, 9, 100);
+const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 1), wallMaterial);
+wall2.position.set(0, (WALL_HEIGHT / 2) - 1, WALL_SIZE / 2);
 scene.add(wall2);
 
-const wall3 = new THREE.Mesh(new THREE.BoxGeometry(1, 20, 200), wallMaterial);
-wall3.position.set(-100, 9, 0);
+const wall3 = new THREE.Mesh(new THREE.BoxGeometry(1, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+wall3.position.set(-WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
 scene.add(wall3);
 
-const wall4 = new THREE.Mesh(new THREE.BoxGeometry(1, 20, 200), wallMaterial);
-wall4.position.set(100, 9, 0);
+const wall4 = new THREE.Mesh(new THREE.BoxGeometry(1, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+wall4.position.set(WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
 scene.add(wall4);
 
 
