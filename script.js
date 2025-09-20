@@ -122,6 +122,10 @@ ws.onmessage = (event) => {
         for (const id in data.redItems) {
             createRedItemMesh(id, data.redItems[id]);
         }
+    } else if (data.type === 'item_respawned') {
+        // 単体アイテムの再出現
+        console.log(`アイテム再出現: ${data.itemId}`, data.item);
+        createRedItemMesh(data.itemId, data.item);
     } else if (data.type === 'show_exclamation') {
         if (data.playerId === myId && myId !== oniId) {
             showExclamation = true;
@@ -578,14 +582,14 @@ function removeSword(mesh) {
     }
 }
 
-// 🚨修正: 赤いアイテムメッシュの作成（超目立つ版）
+// 🚨修正: 赤いアイテムメッシュの作成（再出現対応）
 function createRedItemMesh(id, data) {
     console.log(`赤いアイテムメッシュ作成: ${id}`, data);
     
-    const geometry = new THREE.SphereGeometry(1.0, 16, 16); // サイズを大幅拡大
+    const geometry = new THREE.SphereGeometry(1.0, 16, 16);
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
-        emissive: 0xff0000, // 強い発光
+        emissive: 0xff0000,
         emissiveIntensity: 0.5,
         roughness: 0.1,
         metalness: 0.3
@@ -603,8 +607,23 @@ function createRedItemMesh(id, data) {
     scene.add(mesh);
     redItems[id] = mesh;
     
+    // 出現エフェクト
+    mesh.scale.set(0.1, 0.1, 0.1);
+    const startTime = Date.now();
+    function appearEffect() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / 1000, 1); // 1秒で出現
+        
+        const scale = 0.1 + (progress * 0.9);
+        mesh.scale.set(scale, scale, scale);
+        
+        if (progress < 1) {
+            requestAnimationFrame(appearEffect);
+        }
+    }
+    appearEffect();
+    
     console.log(`赤いアイテム ${id} を位置 (${data.x}, ${data.y}, ${data.z}) に作成しました`);
-    console.log(`現在のシーン内オブジェクト数: ${scene.children.length}`);
     
     return mesh;
 }

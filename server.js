@@ -83,6 +83,46 @@ function generateRedItems() {
 console.log('サーバー起動時の赤いアイテム生成...');
 generateRedItems();
 
+// 赤いアイテムの時間経過での自動出現システム
+const itemSpawnHistory = []; // 出現履歴
+const ITEM_RESPAWN_TIME = 30000; // 30秒後に再出現
+
+// 取得されたアイテムの位置を記録
+function recordItemPosition(itemId, position) {
+    itemSpawnHistory.push({
+        itemId: itemId,
+        position: position,
+        collectedTime: Date.now()
+    });
+    
+    // 30秒後に同じ位置に再出現
+    setTimeout(() => {
+        respawnItemAtPosition(itemId, position);
+    }, ITEM_RESPAWN_TIME);
+}
+
+// 指定位置にアイテムを再出現
+function respawnItemAtPosition(originalId, position) {
+    // 新しいIDで再生成
+    const newItemId = `respawn_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    redItems[newItemId] = {
+        id: newItemId,
+        x: position.x + (Math.random() - 0.5) * 4, // 少しランダムにずらす
+        y: position.y,
+        z: position.z + (Math.random() - 0.5) * 4,
+    };
+    
+    // 全プレイヤーに新しいアイテム出現を通知
+    broadcast({
+        type: 'item_respawned',
+        itemId: newItemId,
+        item: redItems[newItemId]
+    });
+    
+    console.log(`アイテム再出現: ${newItemId} at (${redItems[newItemId].x.toFixed(1)}, ${redItems[newItemId].y}, ${redItems[newItemId].z.toFixed(1)})`);
+}
+
 // 生成確認
 console.log(`生成された赤いアイテム一覧:`);
 for (const itemId in redItems) {
@@ -280,7 +320,13 @@ wss.on('connection', (ws, req) => {
                 case 'collect_red_item':
                     console.log(`プレイヤー ${id} が赤いアイテム ${data.itemId} を取得しようとしています`);
                     if (redItems[data.itemId]) {
+                        const itemPosition = { ...redItems[data.itemId] }; // 位置を保存
+                        
                         console.log(`赤いアイテム ${data.itemId} を削除し、スコアを更新します`);
+                        
+                        // アイテム位置を記録（30秒後の再出現用）
+                        recordItemPosition(data.itemId, itemPosition);
+                        
                         delete redItems[data.itemId];
                         players[id].score += 10;
                         broadcast({ 
@@ -290,6 +336,7 @@ wss.on('connection', (ws, req) => {
                         });
                         console.log(`赤いアイテム ${data.itemId} が ${id} によって取得されました`);
                         console.log(`残り赤いアイテム数: ${Object.keys(redItems).length}`);
+                        console.log(`30秒後に位置 (${itemPosition.x.toFixed(1)}, ${itemPosition.y}, ${itemPosition.z.toFixed(1)}) に再出現予定`);
                         
                         // すべての赤いアイテムが取得された場合、新しいアイテムを生成
                         if (Object.keys(redItems).length === 0) {
