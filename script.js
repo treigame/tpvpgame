@@ -530,7 +530,7 @@ function updatePlayerColors() {
     }
 }
 
-// 剣を追加する関数
+// 剣を追加する関数（右下から持つように修正）
 function addSword(mesh) {
     if (mesh.sword) return;
     
@@ -561,8 +561,10 @@ function addSword(mesh) {
     handle.castShadow = true;
     swordGroup.add(handle);
     
-    swordGroup.position.set(1.2, -0.3, -1.5);
-    swordGroup.rotation.x = -Math.PI / 6;
+    // 右下から持つ位置に変更
+    swordGroup.position.set(1.0, -1.2, -0.5); // 右下の位置
+    swordGroup.rotation.x = Math.PI / 4; // 斜め下向き
+    swordGroup.rotation.y = -Math.PI / 6; // 少し内側向き
     
     mesh.add(swordGroup);
     mesh.sword = swordGroup;
@@ -1039,36 +1041,112 @@ let canJump = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
-// マウスクリックで雪玉投擲
+// マウスクリック・タッチで剣振りアクション
+let swordSwinging = false;
+
 document.addEventListener('click', () => {
     if (!document.pointerLockElement) {
         document.body.requestPointerLock();
+    } else if (myId === oniId && !swordSwinging) {
+        // 鬼の場合は剣を振る
+        swingSword();
     } else if (canThrowSnowball && myId !== oniId) {
-        // 雪玉を投げる
-        const direction = new THREE.Vector3();
-        camera.getWorldDirection(direction);
-        
-        const playerPos = controls.getObject().position;
-        const targetPos = playerPos.clone().add(direction.multiplyScalar(20));
-        
-        ws.send(JSON.stringify({
-            type: 'throw_snowball',
-            playerId: myId,
-            startX: playerPos.x,
-            startY: playerPos.y,
-            startZ: playerPos.z,
-            targetX: targetPos.x,
-            targetY: targetPos.y,
-            targetZ: targetPos.z
-        }));
-        
-        // 雪玉投擲後はリセット
-        canThrowSnowball = false;
-        gameState.redItemsCollected = 0;
-        gameState.score += 100; // 投擲ボーナス
-        updateUI();
+        // 逃走者で雪玉投擲可能な場合
+        throwSnowball();
     }
 });
+
+document.addEventListener('touchstart', (event) => {
+    if (myId === oniId && !swordSwinging) {
+        event.preventDefault();
+        swingSword();
+    }
+});
+
+// 剣振りアクション
+function swingSword() {
+    if (!camera.sword || swordSwinging) return;
+    
+    swordSwinging = true;
+    const sword = camera.sword;
+    const originalRotation = sword.rotation.clone();
+    
+    console.log('剣振りアクション開始！');
+    
+    // 剣振りアニメーション
+    const swingDuration = 300; // 0.3秒
+    const startTime = Date.now();
+    
+    function animateSwing() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / swingDuration, 1);
+        
+        if (progress < 1) {
+            // 剣を振り下ろす
+            const swingAngle = Math.sin(progress * Math.PI) * Math.PI / 3;
+            sword.rotation.x = originalRotation.x - swingAngle;
+            sword.rotation.z = originalRotation.z + swingAngle * 0.5;
+            
+            requestAnimationFrame(animateSwing);
+        } else {
+            // 元の位置に戻す
+            sword.rotation.copy(originalRotation);
+            swordSwinging = false;
+            console.log('剣振りアクション完了');
+            
+            // 剣振り時の鬼交代チェック
+            checkSwordHit();
+        }
+    }
+    
+    animateSwing();
+}
+
+// 剣での攻撃判定
+function checkSwordHit() {
+    if (myId !== oniId) return;
+    
+    for (const id in players) {
+        if (id === myId) continue;
+        const otherPlayer = players[id];
+        const distance = controls.getObject().position.distanceTo(otherPlayer.position);
+        
+        if (distance < 4.0) { // 剣の攻撃範囲
+            console.log(`剣攻撃ヒット！鬼交代: ${myId} → ${id}`);
+            ws.send(JSON.stringify({ 
+                type: 'tag_player',
+                id: myId,
+                taggedId: id 
+            }));
+            break;
+        }
+    }
+}
+
+// 雪玉投擲（分離）
+function throwSnowball() {
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    
+    const playerPos = controls.getObject().position;
+    const targetPos = playerPos.clone().add(direction.multiplyScalar(20));
+    
+    ws.send(JSON.stringify({
+        type: 'throw_snowball',
+        playerId: myId,
+        startX: playerPos.x,
+        startY: playerPos.y,
+        startZ: playerPos.z,
+        targetX: targetPos.x,
+        targetY: targetPos.y,
+        targetZ: targetPos.z
+    }));
+    
+    canThrowSnowball = false;
+    gameState.redItemsCollected = 0;
+    gameState.score += 100;
+    updateUI();
+}
 
 // キーボードイベント（WASD修正版）
 const keys = {};
@@ -1424,21 +1502,19 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 🚨修正: 鬼ごっこの判定（直接タッチを確実に動作）
+// 🚨修正: 鬼ごっこの判定（確実な鬼交代システム）
 setInterval(() => {
     if (!isConnected) return;
     
     if (myId === oniId) {
-        // 鬼の場合：他のプレイヤーとの距離をチェック
+        // 鬼の場合：自動的な近接判定（剣振り以外）
         for (const id in players) {
             if (id === myId) continue;
             const otherPlayer = players[id];
             const distance = controls.getObject().position.distanceTo(otherPlayer.position);
             
-            console.log(`鬼 ${myId} と プレイヤー ${id} の距離: ${distance.toFixed(2)}`);
-            
-            if (distance < 3.0) { // 判定距離を拡大
-                console.log(`直接タッチ検出！鬼交代を実行: ${myId} → ${id}`);
+            if (distance < 2.5) { // 自動タッチ判定
+                console.log(`自動近接タッチ検出！鬼交代: ${myId} → ${id}, 距離: ${distance.toFixed(2)}`);
                 ws.send(JSON.stringify({ 
                     type: 'tag_player',
                     id: myId,
@@ -1467,7 +1543,7 @@ setInterval(() => {
             }
         }
     }
-}, 100); // より頻繁にチェック
+}, 200); // より頻繁にチェック
 
 // メッセージ表示関数
 function showMessage(text, type = 'info', duration = 3000) {

@@ -362,16 +362,29 @@ wss.on('connection', (ws, req) => {
                     break;
                     
                 case 'tag_player':
-                    // 直接タッチによる鬼交代を復活
+                    // 直接タッチ・剣攻撃による鬼交代を確実に処理
+                    console.log(`鬼交代要求受信: 送信者=${data.id}, 鬼=${oniId}, ターゲット=${data.taggedId}`);
+                    
                     if (data.id === oniId && data.id === id && players[data.taggedId]) {
                         const oldOni = oniId;
                         oniId = data.taggedId;
                         
                         // スコア更新
-                        players[oldOni].score += 100;
+                        if (players[oldOni]) {
+                            players[oldOni].score += 100;
+                        }
                         
-                        broadcast({ type: 'oni_changed', oniId: oniId });
-                        console.log(`直接タッチで鬼が交代しました: ${oldOni} → ${oniId}`);
+                        // 全プレイヤーに鬼交代を通知
+                        const changeMessage = { type: 'oni_changed', oniId: oniId };
+                        broadcast(changeMessage);
+                        
+                        console.log(`鬼交代完了: ${oldOni} → ${oniId}`);
+                        console.log(`交代メッセージ送信:`, changeMessage);
+                    } else {
+                        console.log(`鬼交代要求却下: 条件不一致`);
+                        console.log(`  送信者が鬼か: ${data.id === oniId}`);
+                        console.log(`  送信者が本人か: ${data.id === id}`);
+                        console.log(`  ターゲット存在: ${!!players[data.taggedId]}`);
                     }
                     break;
                     
