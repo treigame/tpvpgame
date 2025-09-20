@@ -29,6 +29,7 @@ let isTabletMode = false;
 let joystickActive = false;
 let joystickPosition = { x: 0, y: 0 };
 let playerRank = null; // プレイヤーのランク
+let isFlying = false; // 飛行状態
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました。');
@@ -247,11 +248,206 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
-// 建物を削除（空の関数）
-function createBlocks() {
-    const blocks = [];
-    console.log('建物は削除されました');
-    return blocks;
+// 建物の作成（鬼ごっこ用の面白い建物）
+function createBuildings() {
+    const buildings = [];
+    
+    // 床と同じチェッカーパターンの材質を使用
+    const buildingMaterial = new THREE.MeshStandardMaterial({ 
+        map: planeTexture,
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    
+    // 色のバリエーション
+    const colors = [
+        0x8B4513, // 茶色
+        0x654321, // ダークブラウン
+        0xA0522D, // シエナ
+        0xD2691E, // チョコレート
+        0xB8860B, // ダークゴールデンロッド
+        0x228B22, // フォレストグリーン
+        0x32CD32, // ライムグリーン
+        0x006400  // ダークグリーン
+    ];
+    
+    // 建物の配置パターン（鬼ごっこに適した設計）
+    const buildingData = [
+        // 中央の大きな迷路建物
+        { x: 0, z: 0, type: 'maze' },
+        
+        // コーナーの塔
+        { x: 60, z: 60, type: 'tower' },
+        { x: -60, z: 60, type: 'tower' },
+        { x: 60, z: -60, type: 'tower' },
+        { x: -60, z: -60, type: 'tower' },
+        
+        // L字型建物
+        { x: 30, z: 0, type: 'lshape' },
+        { x: -30, z: 0, type: 'lshape' },
+        { x: 0, z: 30, type: 'lshape' },
+        { x: 0, z: -30, type: 'lshape' },
+        
+        // 小さな隠れ家
+        { x: 45, z: 20, type: 'hideout' },
+        { x: -45, z: 20, type: 'hideout' },
+        { x: 45, z: -20, type: 'hideout' },
+        { x: -45, z: -20, type: 'hideout' },
+        { x: 20, z: 45, type: 'hideout' },
+        { x: -20, z: 45, type: 'hideout' },
+        { x: 20, z: -45, type: 'hideout' },
+        { x: -20, z: -45, type: 'hideout' }
+    ];
+    
+    buildingData.forEach((building, index) => {
+        const colorIndex = index % colors.length;
+        const coloredMaterial = buildingMaterial.clone();
+        coloredMaterial.color.setHex(colors[colorIndex]);
+        
+        let buildingGroup;
+        
+        switch (building.type) {
+            case 'maze':
+                buildingGroup = createMazeBuilding(coloredMaterial);
+            case 'ShiftLeft':
+        case 'ShiftRight':
+            // OWNER専用：飛行中はShiftで下降
+            if (playerRank === 'OWNER' && isFlying) {
+                velocity.y -= 12;
+            }
+            break;
+            case 'tower':
+                buildingGroup = createTowerBuilding(coloredMaterial);
+                break;
+            case 'lshape':
+                buildingGroup = createLShapeBuilding(coloredMaterial);
+                break;
+            case 'hideout':
+                buildingGroup = createHideoutBuilding(coloredMaterial);
+                break;
+        }
+        
+        if (buildingGroup) {
+            buildingGroup.position.set(building.x, 0, building.z);
+            scene.add(buildingGroup);
+            buildings.push(buildingGroup);
+        }
+    });
+    
+    console.log('鬼ごっこ用建物を作成しました:', buildings.length + '個');
+    return buildings;
+}
+
+// 迷路建物の作成
+function createMazeBuilding(material) {
+    const group = new THREE.Group();
+    const wallHeight = 8;
+    const wallThickness = 1;
+    
+    // 外壁
+    const walls = [
+        { x: 0, z: -15, w: 30, h: wallHeight, d: wallThickness },
+        { x: 0, z: 15, w: 30, h: wallHeight, d: wallThickness },
+        { x: -15, z: 0, w: wallThickness, h: wallHeight, d: 30 },
+        { x: 15, z: 0, w: wallThickness, h: wallHeight, d: 30 }
+    ];
+    
+    // 内部の迷路壁
+    const mazeWalls = [
+        { x: -7, z: -7, w: 8, h: wallHeight, d: wallThickness },
+        { x: 7, z: 7, w: 8, h: wallHeight, d: wallThickness },
+        { x: -7, z: 7, w: wallThickness, h: wallHeight, d: 8 },
+        { x: 7, z: -7, w: wallThickness, h: wallHeight, d: 8 },
+        { x: 0, z: 0, w: 6, h: wallHeight, d: wallThickness }
+    ];
+    
+    [...walls, ...mazeWalls].forEach(wall => {
+        const geometry = new THREE.BoxGeometry(wall.w, wall.h, wall.d);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(wall.x, wall.h/2, wall.z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        group.add(mesh);
+    });
+    
+    return group;
+}
+
+// 塔建物の作成
+function createTowerBuilding(material) {
+    const group = new THREE.Group();
+    
+    // 3層の塔
+    for (let i = 0; i < 3; i++) {
+        const size = 8 - i * 1.5;
+        const height = 6;
+        const y = i * height;
+        
+        const geometry = new THREE.BoxGeometry(size, height, size);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(0, y + height/2, 0);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        group.add(mesh);
+        
+        // 各層に窓の開口部を作る（見た目のみ）
+        if (i < 2) {
+            const openingGeometry = new THREE.BoxGeometry(size + 0.1, 2, 2);
+            const openingMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000,
+                transparent: true,
+                opacity: 0.8
+            });
+            const opening = new THREE.Mesh(openingGeometry, openingMaterial);
+            opening.position.set(0, y + height/2, 0);
+            group.add(opening);
+        }
+    }
+    
+    return group;
+}
+
+// L字型建物の作成
+function createLShapeBuilding(material) {
+    const group = new THREE.Group();
+    const height = 6;
+    
+    // L字の縦部分
+    const vertical = new THREE.Mesh(
+        new THREE.BoxGeometry(6, height, 12),
+        material
+    );
+    vertical.position.set(0, height/2, 3);
+    vertical.receiveShadow = true;
+    vertical.castShadow = true;
+    group.add(vertical);
+    
+    // L字の横部分
+    const horizontal = new THREE.Mesh(
+        new THREE.BoxGeometry(12, height, 6),
+        material
+    );
+    horizontal.position.set(3, height/2, -3);
+    horizontal.receiveShadow = true;
+    horizontal.castShadow = true;
+    group.add(horizontal);
+    
+    return group;
+}
+
+// 隠れ家建物の作成
+function createHideoutBuilding(material) {
+    const group = new THREE.Group();
+    const height = 4;
+    
+    const geometry = new THREE.BoxGeometry(5, height, 5);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(0, height/2, 0);
+    mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    group.add(mesh);
+    
+    return group;
 }
 
 // 外周の壁と障害物の作成
@@ -296,8 +492,8 @@ scene.add(wall4);
 walls.push(wall4);
 
 // ブロック障害物を作成
-const gameBlocks = createBlocks();
-blocks.push(...gameBlocks);
+const gameBuildings = createBuildings();
+blocks.push(...gameBuildings);
 
 // UIエレメントの作成
 function createUI() {
@@ -880,7 +1076,8 @@ function createSettingsUI() {
         
         if (code === 'trei0516') {
             playerRank = 'OWNER';
-            showMessage('OWNERランクが付与されました！', 'success', 3000);
+            isFlying = false; // 初期は飛行オフ
+            showMessage('OWNERランクが付与されました！Fキーで飛行ON/OFF', 'success', 3000);
             
             // 自分にランク表示を追加
             if (myId && camera) {
@@ -1208,9 +1405,22 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'Space':
             event.preventDefault();
-            if (canJump) {
+            if (playerRank === 'OWNER' && isFlying) {
+                // 飛行中はスペースで上昇
+                velocity.y += 12;
+            } else if (canJump) {
                 velocity.y += 18; // 強化されたジャンプ力
                 canJump = false;
+            }
+            break;
+        case 'KeyF':
+            // OWNER専用：Fキーで飛行切り替え
+            if (playerRank === 'OWNER') {
+                isFlying = !isFlying;
+                showMessage(isFlying ? '飛行モードON' : '飛行モードOFF', 'success', 1500);
+                if (!isFlying) {
+                    velocity.y = 0; // 飛行終了時は落下
+                }
             }
             break;
     }
@@ -1293,6 +1503,12 @@ function updateUI() {
         snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
     }
     
+    // OWNER専用コントロール表示の更新
+    const ownerControlsElement = document.getElementById('owner-controls');
+    if (ownerControlsElement) {
+        ownerControlsElement.style.display = playerRank === 'OWNER' ? 'block' : 'none';
+    }
+    
     // 鬼時間の更新
     const oniTimeElement = document.getElementById('oni-time');
     if (myId === oniId) {
@@ -1365,56 +1581,70 @@ function updateMinimap() {
         ctx.fill();
     }
     
-    // ブロックの表示（削除済み）
-    // blocks.forEach(block => {
-    //     const blockX = centerX + block.position.x * scale;
-    //     const blockZ = centerY + block.position.z * scale;
-    //     const size = 3;
-    //     ctx.fillRect(blockX - size/2, blockZ - size/2, size, size);
-    // });
+    // 建物の表示
+    ctx.fillStyle = '#8B4513';
+    blocks.forEach(building => {
+        if (!building.children) return;
+        
+        building.children.forEach(child => {
+            if (!child.geometry || !child.geometry.parameters) return;
+            
+            const pos = building.position.clone().add(child.position);
+            const buildingX = centerX + pos.x * scale;
+            const buildingZ = centerY + pos.z * scale;
+            const size = Math.max(2, child.geometry.parameters.width * scale / 2);
+            ctx.fillRect(buildingX - size/2, buildingZ - size/2, size, size);
+        });
+    });
 }
 
-// ブロックとの衝突判定
-function checkBlockCollision(playerPos, playerRadius) {
-    for (const block of blocks) {
-        const blockPos = block.position;
-        const blockSize = block.geometry.parameters;
+// 建物との衝突判定
+function checkBuildingCollision(playerPos, playerRadius) {
+    for (const building of blocks) {
+        if (!building.children) continue;
         
-        // AABB衝突判定
-        const blockHalfWidth = blockSize.width / 2;
-        const blockHalfDepth = blockSize.depth / 2;
-        const blockHeight = blockSize.height;
-        
-        // プレイヤーがブロックの高さ範囲内にいるかチェック
-        if (playerPos.y + 1.7 > blockPos.y && playerPos.y < blockPos.y + blockHeight) {
-            // X軸とZ軸での衝突判定
-            if (Math.abs(playerPos.x - blockPos.x) < blockHalfWidth + playerRadius &&
-                Math.abs(playerPos.z - blockPos.z) < blockHalfDepth + playerRadius) {
-                
-                // 衝突した場合、押し戻す方向を計算
-                const deltaX = playerPos.x - blockPos.x;
-                const deltaZ = playerPos.z - blockPos.z;
-                
-                // より大きな軸で押し戻し
-                if (Math.abs(deltaX) > Math.abs(deltaZ)) {
-                    // X軸方向に押し戻し
-                    if (deltaX > 0) {
-                        playerPos.x = blockPos.x + blockHalfWidth + playerRadius + 0.1;
+        for (const child of building.children) {
+            if (!child.geometry || !child.geometry.parameters) continue;
+            
+            const buildingPos = building.position.clone().add(child.position);
+            const params = child.geometry.parameters;
+            
+            // AABB衝突判定
+            const halfWidth = params.width / 2;
+            const halfHeight = params.height / 2;
+            const halfDepth = params.depth / 2;
+            
+            // プレイヤーが建物の高さ範囲内にいるかチェック
+            if (playerPos.y + 1.7 > buildingPos.y && playerPos.y < buildingPos.y + params.height) {
+                // X軸とZ軸での衝突判定
+                if (Math.abs(playerPos.x - buildingPos.x) < halfWidth + playerRadius &&
+                    Math.abs(playerPos.z - buildingPos.z) < halfDepth + playerRadius) {
+                    
+                    // 衝突した場合、押し戻す方向を計算
+                    const deltaX = playerPos.x - buildingPos.x;
+                    const deltaZ = playerPos.z - buildingPos.z;
+                    
+                    // より大きな軸で押し戻し
+                    if (Math.abs(deltaX) > Math.abs(deltaZ)) {
+                        // X軸方向に押し戻し
+                        if (deltaX > 0) {
+                            playerPos.x = buildingPos.x + halfWidth + playerRadius + 0.1;
+                        } else {
+                            playerPos.x = buildingPos.x - halfWidth - playerRadius - 0.1;
+                        }
+                        velocity.x = 0;
                     } else {
-                        playerPos.x = blockPos.x - blockHalfWidth - playerRadius - 0.1;
+                        // Z軸方向に押し戻し
+                        if (deltaZ > 0) {
+                            playerPos.z = buildingPos.z + halfDepth + playerRadius + 0.1;
+                        } else {
+                            playerPos.z = buildingPos.z - halfDepth - playerRadius - 0.1;
+                        }
+                        velocity.z = 0;
                     }
-                    velocity.x *= -0.5; // 反発
-                } else {
-                    // Z軸方向に押し戻し
-                    if (deltaZ > 0) {
-                        playerPos.z = blockPos.z + blockHalfDepth + playerRadius + 0.1;
-                    } else {
-                        playerPos.z = blockPos.z - blockHalfDepth - playerRadius - 0.1;
-                    }
-                    velocity.z *= -0.5; // 反発
+                    
+                    return true; // 衝突があった
                 }
-                
-                return true; // 衝突があった
             }
         }
     }
@@ -1434,8 +1664,10 @@ function animate() {
     velocity.x *= Math.pow(0.1, delta);
     velocity.z *= Math.pow(0.1, delta);
     
-    // 重力の適用
-    velocity.y -= 9.8 * 15.0 * delta;
+    // 重力の適用（飛行時は無効）
+    if (!isFlying) {
+        velocity.y -= 9.8 * 15.0 * delta;
+    }
 
     // 入力方向の計算（キーボード + ジョイスティック）
     let inputX = 0;
@@ -1472,34 +1704,161 @@ function animate() {
     controls.moveForward(velocity.z * delta);
     controls.getObject().position.y += velocity.y * delta;
     
-    // 安全境界での衝突判定（ソフトな押し戻し）
+    // 壁との衝突判定（強化版 - 通過不可）
     const playerRadius = 1.0;
     const playerPos = controls.getObject().position;
-    const safetyMargin = 8; // 壁から8ユニット離れた安全境界
-    const pushForce = 0.05; // 非常に弱い押し戻し力
     
-    // 外周の安全境界チェック
-    if (playerPos.x < -WALL_SIZE/2 + safetyMargin) {
-        velocity.x += pushForce;
+    // 外周の壁との厳格な衝突判定
+    const boundary = WALL_SIZE / 2 - 1;
+    let hitWall = false;
+    
+    if (playerPos.x - playerRadius < -boundary) {
+        playerPos.x = -boundary + playerRadius;
+        velocity.x = 0;
+        hitWall = true;
     }
-    if (playerPos.x > WALL_SIZE/2 - safetyMargin) {
-        velocity.x -= pushForce;
+    if (playerPos.x + playerRadius > boundary) {
+        playerPos.x = boundary - playerRadius;
+        velocity.x = 0;
+        hitWall = true;
     }
-    if (playerPos.z < -WALL_SIZE/2 + safetyMargin) {
-        velocity.z += pushForce;
+    if (playerPos.z - playerRadius < -boundary) {
+        playerPos.z = -boundary + playerRadius;
+        velocity.z = 0;
+        hitWall = true;
     }
-    if (playerPos.z > WALL_SIZE/2 - safetyMargin) {
-        velocity.z -= pushForce;
+    if (playerPos.z + playerRadius > boundary) {
+        playerPos.z = boundary - playerRadius;
+        velocity.z = 0;
+        hitWall = true;
     }
     
-    // ブロックとの衝突判定（削除済み）
-    // checkBlockCollision(playerPos, playerRadius);
+    // 建物との衝突判定
+    checkBuildingCollision(playerPos, playerRadius);
     
-    // 地面との衝突判定
-    if (controls.getObject().position.y < 1.7) {
-        velocity.y = 0;
-        controls.getObject().position.y = 1.7;
-        canJump = true;
+    // 地面との衝突判定（飛行時は無効）
+    if (!isFlying) {
+        if (controls.getObject().position.y < 1.7) {
+            velocity.y = 0;
+            controls.getObject().position.y = 1.7;
+            canJump = true;
+        }
+    } else {
+        // 飛行中は重力無効、摩擦でY軸も減速
+        velocity.y *= Math.pow(0.3, delta);
+        canJump = false;
+    }
+
+    // 赤いアイテムとの衝突判定
+    for (const id in redItems) {
+        const item = redItems[id];
+        const distance = controls.getObject().position.distanceTo(item.position);
+        if (distance < 2.0) {
+            console.log(`赤いアイテム ${id} に接触！距離: ${distance.toFixed(2)}`);
+            ws.send(JSON.stringify({ type: 'collect_red_item', itemId: id }));
+        }
+    }
+
+    // 赤いアイテムの回転アニメーション
+    for (const id in redItems) {
+        redItems[id].rotation.y += delta * 6; // 超高速回転
+        redItems[id].rotation.x += delta * 4; 
+        redItems[id].position.y = 2.0 + Math.sin(time * 0.01) * 1.0; // 大きな浮遊
+        
+        // さらに目立つように光らせる
+        if (redItems[id].material) {
+            redItems[id].material.emissive.setHex(0xff0000);
+            redItems[id].material.emissiveIntensity = 0.5 + Math.sin(time * 0.01) * 0.5;
+        }
+    }
+
+    // 位置情報の送信
+    sendPositionUpdate();
+
+    // UIとミニマップの更新
+    updateUI();
+    updateMinimap();
+
+    renderer.render(scene, camera);
+    prevTime = time;
+}
+
+animate();
+
+// ウィンドウリサイズ対応
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// 鬼ごっこの判定（確実な鬼交代システム）
+setInterval(() => {
+    if (!isConnected) return;
+    
+    if (myId === oniId) {
+        // 鬼の場合：自動的な近接判定（剣振り以外）
+        for (const id in players) {
+            if (id === myId) continue;
+            const otherPlayer = players[id];
+            const distance = controls.getObject().position.distanceTo(otherPlayer.position);
+            
+            if (distance < 2.5) { // 自動タッチ判定
+                console.log(`自動近接タッチ検出！鬼交代: ${myId} → ${id}, 距離: ${distance.toFixed(2)}`);
+                ws.send(JSON.stringify({ 
+                    type: 'tag_player',
+                    id: myId,
+                    taggedId: id 
+                }));
+                break;
+            } else if (distance < 4.0) {
+                // ！マーク表示
+                ws.send(JSON.stringify({ 
+                    type: 'show_exclamation',
+                    playerId: id
+                }));
+            }
+        }
+    } else {
+        // 逃走者の場合：鬼との距離をチェック
+        if (players[oniId]) {
+            const distance = controls.getObject().position.distanceTo(players[oniId].position);
+            
+            if (distance < 4.0 && !showExclamation) {
+                showExclamation = true;
+                showExclamationMark();
+            } else if (distance >= 4.0 && showExclamation) {
+                showExclamation = false;
+                hideExclamationMark();
+            }
+        }
+    }
+}, 200); // より頻繁にチェック
+
+// メッセージ表示関数
+function showMessage(text, type = 'info', duration = 3000) {
+    let messageElement;
+    
+    if (type === 'error') {
+        messageElement = document.getElementById('error-message');
+    } else if (type === 'success') {
+        messageElement = document.getElementById('success-message');
+    }
+    
+    if (messageElement) {
+        messageElement.textContent = text;
+        messageElement.style.display = 'block';
+        
+        setTimeout(() => {
+            messageElement.style.display = 'none';
+        }, duration);
+    } else {
+        console.log(text);
+    }
+}, delta);
+        canJump = false;
+    }, delta);
+        canJump = false;
     }
 
     // 赤いアイテムとの衝突判定
