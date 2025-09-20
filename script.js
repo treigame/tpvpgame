@@ -28,6 +28,7 @@ let gameState = {
 let isTabletMode = false;
 let joystickActive = false;
 let joystickPosition = { x: 0, y: 0 };
+let playerRank = null; // プレイヤーのランク
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました。');
@@ -169,6 +170,15 @@ ws.onmessage = (event) => {
         // プレイヤーの色を更新
         updatePlayerColors();
         updateUI();
+    } else if (data.type === 'player_rank_updated') {
+        // プレイヤーのランク更新
+        if (data.playerId !== myId && players[data.playerId]) {
+            if (data.rank) {
+                addRankDisplay(players[data.playerId], data.rank);
+            } else {
+                removeRankDisplay(players[data.playerId]);
+            }
+        }
     }
 };
 
@@ -237,62 +247,10 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
-// ブロック障害物の作成
+// 建物を削除（空の関数）
 function createBlocks() {
     const blocks = [];
-    
-    // 色のパレット
-    const colors = [
-        0xff6b6b, // 赤
-        0x4ecdc4, // ターコイズ
-        0x45b7d1, // 青
-        0x96ceb4, // 緑
-        0xfeca57, // 黄
-        0xff9ff3, // ピンク
-        0x54a0ff, // 青2
-        0x5f27cd  // 紫
-    ];
-    
-    // ブロックの配置パターン
-    const blockPositions = [
-        // 中央の大きなブロック群
-        { x: 0, y: 5, z: 0, width: 8, height: 10, depth: 8 },
-        { x: 15, y: 3, z: 15, width: 6, height: 6, depth: 6 },
-        { x: -15, y: 4, z: -15, width: 5, height: 8, depth: 5 },
-        { x: 25, y: 2, z: -10, width: 4, height: 4, depth: 4 },
-        { x: -20, y: 6, z: 20, width: 7, height: 12, depth: 7 },
-        
-        // 小さなブロック群
-        { x: 30, y: 1, z: 30, width: 3, height: 2, depth: 3 },
-        { x: -30, y: 2, z: -30, width: 3, height: 4, depth: 3 },
-        { x: 40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
-        { x: 0, y: 1, z: 40, width: 2, height: 2, depth: 2 },
-        { x: -40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
-        { x: 0, y: 1, z: -40, width: 2, height: 2, depth: 2 },
-        
-        // ランダムなブロック
-        { x: 10, y: 2, z: -25, width: 3, height: 4, depth: 3 },
-        { x: -10, y: 3, z: 25, width: 4, height: 6, depth: 4 },
-        { x: 35, y: 1, z: -20, width: 2, height: 2, depth: 2 },
-        { x: -35, y: 2, z: 15, width: 3, height: 4, depth: 3 },
-    ];
-    
-    blockPositions.forEach((pos, index) => {
-        const geometry = new THREE.BoxGeometry(pos.width, pos.height, pos.depth);
-        const material = new THREE.MeshStandardMaterial({ 
-            color: colors[index % colors.length],
-            roughness: 0.8,
-            metalness: 0.1
-        });
-        const block = new THREE.Mesh(geometry, material);
-        block.position.set(pos.x, pos.y, pos.z);
-        block.receiveShadow = true;
-        block.castShadow = true;
-        scene.add(block);
-        blocks.push(block);
-    });
-    
-    console.log('ブロック障害物を作成しました:', blocks.length + '個');
+    console.log('建物は削除されました');
     return blocks;
 }
 
@@ -520,6 +478,68 @@ function removeSword(mesh) {
     }
 }
 
+// ランク表示を追加する関数
+function addRankDisplay(mesh, rank) {
+    if (mesh.rankDisplay) return;
+    
+    const rankGroup = new THREE.Group();
+    
+    // ランク背景（赤い円）
+    const bgGeometry = new THREE.RingGeometry(0, 1.2, 16);
+    const bgMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8
+    });
+    const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+    bgMesh.rotation.x = -Math.PI / 2;
+    rankGroup.add(bgMesh);
+    
+    // テキスト用のキャンバスを作成
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    
+    // テキストを描画
+    context.fillStyle = '#ffffff';
+    context.font = 'bold 32px Arial';
+    context.textAlign = 'center';
+    context.fillText(rank, 128, 40);
+    
+    // テクスチャとしてキャンバスを使用
+    const texture = new THREE.CanvasTexture(canvas);
+    const textMaterial = new THREE.MeshBasicMaterial({ 
+        map: texture,
+        transparent: true,
+        alphaTest: 0.1
+    });
+    
+    // テキスト平面を作成
+    const textGeometry = new THREE.PlaneGeometry(2, 0.5);
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.y = 0.1;
+    rankGroup.add(textMesh);
+    
+    // プレイヤーの頭上に配置
+    rankGroup.position.set(0, 3.5, 0);
+    
+    // カメラの方向を向くように設定
+    rankGroup.lookAt(camera.position);
+    
+    mesh.add(rankGroup);
+    mesh.rankDisplay = rankGroup;
+}
+
+// ランク表示を削除する関数
+function removeRankDisplay(mesh) {
+    if (mesh.rankDisplay) {
+        mesh.remove(mesh.rankDisplay);
+        mesh.rankDisplay = null;
+    }
+}
+
 // 赤いアイテムメッシュの作成（再出現対応）
 function createRedItemMesh(id, data) {
     console.log(`赤いアイテムメッシュ作成: ${id}`, data);
@@ -719,8 +739,32 @@ function createSettingsUI() {
             border: 1px solid #ccc;
             text-align: center;
             transition: background-color 0.3s;
+            margin-bottom: 10px;
         ">📱 Tablet Mode</div>
-        <div style="margin-top: 10px; font-size: 12px; opacity: 0.7;">
+        <div style="margin-bottom: 15px;">
+            <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">🔐 Code入力</div>
+            <input type="text" id="code-input" placeholder="Codeを入力..." style="
+                width: 100%;
+                padding: 8px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                background: rgba(255, 255, 255, 0.9);
+                color: black;
+                font-size: 14px;
+            ">
+            <button id="code-submit" style="
+                width: 100%;
+                padding: 8px;
+                margin-top: 5px;
+                border-radius: 4px;
+                border: none;
+                background: #007bff;
+                color: white;
+                cursor: pointer;
+                font-size: 14px;
+            ">確認</button>
+        </div>
+        <div style="font-size: 12px; opacity: 0.7;">
             タブレットモードでタッチ操作を有効にします
         </div>
     `;
@@ -827,6 +871,42 @@ function createSettingsUI() {
         
         // 設定メニューを閉じる
         document.getElementById('settings-menu').style.display = 'none';
+    });
+    
+    // コード確認機能
+    document.getElementById('code-submit').addEventListener('click', () => {
+        const codeInput = document.getElementById('code-input');
+        const code = codeInput.value.trim();
+        
+        if (code === 'trei0516') {
+            playerRank = 'OWNER';
+            showMessage('OWNERランクが付与されました！', 'success', 3000);
+            
+            // 自分にランク表示を追加
+            if (myId && camera) {
+                addRankDisplay(camera, 'OWNER');
+            }
+            
+            // サーバーにランク情報を送信
+            ws.send(JSON.stringify({
+                type: 'set_rank',
+                playerId: myId,
+                rank: 'OWNER'
+            }));
+            
+            codeInput.value = '';
+            document.getElementById('settings-menu').style.display = 'none';
+        } else if (code !== '') {
+            showMessage('無効なコードです', 'error', 2000);
+            codeInput.value = '';
+        }
+    });
+    
+    // Enterキーでコード確認
+    document.getElementById('code-input').addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            document.getElementById('code-submit').click();
+        }
     });
     
     // ジョイスティック操作
@@ -1285,14 +1365,13 @@ function updateMinimap() {
         ctx.fill();
     }
     
-    // ブロックの表示
-    ctx.fillStyle = '#888888';
-    blocks.forEach(block => {
-        const blockX = centerX + block.position.x * scale;
-        const blockZ = centerY + block.position.z * scale;
-        const size = 3;
-        ctx.fillRect(blockX - size/2, blockZ - size/2, size, size);
-    });
+    // ブロックの表示（削除済み）
+    // blocks.forEach(block => {
+    //     const blockX = centerX + block.position.x * scale;
+    //     const blockZ = centerY + block.position.z * scale;
+    //     const size = 3;
+    //     ctx.fillRect(blockX - size/2, blockZ - size/2, size, size);
+    // });
 }
 
 // ブロックとの衝突判定
@@ -1413,8 +1492,8 @@ function animate() {
         velocity.z -= pushForce;
     }
     
-    // ブロックとの衝突判定
-    checkBlockCollision(playerPos, playerRadius);
+    // ブロックとの衝突判定（削除済み）
+    // checkBlockCollision(playerPos, playerRadius);
     
     // 地面との衝突判定
     if (controls.getObject().position.y < 1.7) {

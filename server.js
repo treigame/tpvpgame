@@ -10,6 +10,7 @@ const wss = new WebSocket.Server({ server });
 let players = {};
 let redItems = {}; // 赤いアイテム（オーブの代替）
 let snowballs = {}; // 投げられた雪玉
+let playerRanks = {}; // プレイヤーのランク情報
 let oniId = null;
 const RED_ITEM_COUNT = 20; // 赤いアイテムの数
 let playerCounter = 0;
@@ -28,66 +29,18 @@ app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
 
-// ブロック障害物の定義（クライアントと同期）
-const blockPositions = [
-    // 中央の大きなブロック群
-    { x: 0, y: 5, z: 0, width: 8, height: 10, depth: 8 },
-    { x: 15, y: 3, z: 15, width: 6, height: 6, depth: 6 },
-    { x: -15, y: 4, z: -15, width: 5, height: 8, depth: 5 },
-    { x: 25, y: 2, z: -10, width: 4, height: 4, depth: 4 },
-    { x: -20, y: 6, z: 20, width: 7, height: 12, depth: 7 },
-    
-    // 小さなブロック群
-    { x: 30, y: 1, z: 30, width: 3, height: 2, depth: 3 },
-    { x: -30, y: 2, z: -30, width: 3, height: 4, depth: 3 },
-    { x: 40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
-    { x: 0, y: 1, z: 40, width: 2, height: 2, depth: 2 },
-    { x: -40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
-    { x: 0, y: 1, z: -40, width: 2, height: 2, depth: 2 },
-    
-    // ランダムなブロック
-    { x: 10, y: 2, z: -25, width: 3, height: 4, depth: 3 },
-    { x: -10, y: 3, z: 25, width: 4, height: 6, depth: 4 },
-    { x: 35, y: 1, z: -20, width: 2, height: 2, depth: 2 },
-    { x: -35, y: 2, z: 15, width: 3, height: 4, depth: 3 },
-];
+// ブロック障害物の定義（削除済み）
+// const blockPositions = [];
 
-// サーバー側でのブロック衝突判定
+// サーバー側でのブロック衝突判定（削除済み）
 function isPositionInBlock(x, z, y = 1.7) {
-    for (const block of blockPositions) {
-        const halfWidth = block.width / 2;
-        const halfDepth = block.depth / 2;
-        
-        // プレイヤーがブロックの高さ範囲内にいるかチェック
-        if (y + 1.7 > block.y && y < block.y + block.height) {
-            // X軸とZ軸での衝突判定
-            if (Math.abs(x - block.x) < halfWidth + 1.0 &&
-                Math.abs(z - block.z) < halfDepth + 1.0) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return false; // ブロックなし
 }
 
-// ブロックを避けて安全な位置を生成
+// ブロックを避けて安全な位置を生成（簡素化）
 function generateSafePosition() {
-    let x, z;
-    let attempts = 0;
-    const maxAttempts = 100;
-    
-    do {
-        x = (Math.random() - 0.5) * 150;
-        z = (Math.random() - 0.5) * 150;
-        attempts++;
-    } while (isPositionInBlock(x, z) && attempts < maxAttempts);
-    
-    // 最大試行回数に達した場合はフォールバック位置
-    if (attempts >= maxAttempts) {
-        x = 0;
-        z = 50;
-    }
-    
+    const x = (Math.random() - 0.5) * 150;
+    const z = (Math.random() - 0.5) * 150;
     return { x, z };
 }
 
@@ -167,7 +120,7 @@ function respawnItemAtPosition(originalId, position) {
     // 新しいIDで再生成
     const newItemId = `respawn_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // 元の位置から少しずらして配置（ブロック衝突を考慮）
+    // 元の位置から少しずらして配置
     let newX = position.x + (Math.random() - 0.5) * 4;
     let newZ = position.z + (Math.random() - 0.5) * 4;
     
@@ -380,8 +333,8 @@ wss.on('connection', (ws, req) => {
                     
                     const player = players[data.id];
                     if (player && data.id === id) {
-                        // 位置データの検証（ブロック衝突チェック含む）
-                        if (isValidPosition(data.x, data.y, data.z) && !isPositionInBlock(data.x, data.z, data.y)) {
+                        // 位置データの検証（簡素化）
+                        if (isValidPosition(data.x, data.y, data.z)) {
                             player.x = parseFloat(data.x);
                             player.y = parseFloat(data.y);
                             player.z = parseFloat(data.z);
@@ -396,8 +349,23 @@ wss.on('connection', (ws, req) => {
                                 z: player.z 
                             }, id);
                         } else {
-                            console.log(`不正な位置データを受信（ブロック衝突含む）: ${id}`, data);
+                            console.log(`不正な位置データを受信: ${id}`, data);
                         }
+                    }
+                    break;
+                    
+                case 'set_rank':
+                    // ランク設定
+                    if (data.playerId === id && data.rank === 'OWNER') {
+                        playerRanks[id] = data.rank;
+                        console.log(`プレイヤー ${id} にランク ${data.rank} を付与しました`);
+                        
+                        // 全プレイヤーにランク更新を通知
+                        broadcast({
+                            type: 'player_rank_updated',
+                            playerId: id,
+                            rank: data.rank
+                        });
                     }
                     break;
                     
@@ -533,6 +501,7 @@ wss.on('connection', (ws, req) => {
         
         // プレイヤーデータを削除
         delete players[id];
+        delete playerRanks[id]; // ランク情報も削除
         playerUpdateLimits.delete(id);
         
         // 他のプレイヤーに切断を通知
@@ -582,6 +551,7 @@ const cleanupInterval = setInterval(() => {
         if (now - player.lastUpdate > INACTIVE_TIMEOUT) {
             console.log(`非アクティブなプレイヤーを削除: ${playerId}`);
             delete players[playerId];
+            delete playerRanks[playerId];
             playerUpdateLimits.delete(playerId);
             broadcast({ type: 'remove_player', id: playerId });
             
@@ -600,7 +570,7 @@ const statsInterval = setInterval(() => {
     console.log(`雪玉数: ${Object.keys(snowballs).length}`);
     console.log(`現在の鬼: ${oniId}`);
     console.log(`アクティブ接続数: ${wss.clients.size}`);
-    console.log(`ブロック数: ${blockPositions.length}`);
+    console.log(`ランク付きプレイヤー数: ${Object.keys(playerRanks).length}`);
     
     // プレイヤースコアランキング
     const sortedPlayers = Object.values(players)
@@ -609,7 +579,8 @@ const statsInterval = setInterval(() => {
     
     console.log('=== トップ5プレイヤー ===');
     sortedPlayers.forEach((player, index) => {
-        console.log(`${index + 1}. ${player.id}: ${player.score}点`);
+        const rank = playerRanks[player.id] ? ` [${playerRanks[player.id]}]` : '';
+        console.log(`${index + 1}. ${player.id}${rank}: ${player.score}点`);
     });
     console.log('========================');
 }, 10 * 60 * 1000);
@@ -657,7 +628,8 @@ server.listen(port, () => {
     console.log(`🌐 URL: http://localhost:${port}`);
     console.log(`🎯 赤いアイテム数: ${RED_ITEM_COUNT}`);
     console.log(`❄️ 雪玉システム有効`);
-    console.log(`🧱 ブロック障害物: ${blockPositions.length}個`);
+    console.log(`👑 ランクシステム有効`);
     console.log(`⚡ 移動速度: 0.7倍（56.0）`);
+    console.log(`🏗️ 建物削除済み`);
     console.log(`=================================`);
 });
