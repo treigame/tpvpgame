@@ -576,20 +576,28 @@ function removeSword(mesh) {
     }
 }
 
-// 赤いアイテムメッシュの作成（デバッグ強化版）
+// 🚨修正: 赤いアイテムメッシュの作成（超目立つ版）
 function createRedItemMesh(id, data) {
     console.log(`赤いアイテムメッシュ作成: ${id}`, data);
     
-    const geometry = new THREE.SphereGeometry(0.6, 12, 12); // サイズを大きく
+    const geometry = new THREE.SphereGeometry(1.0, 16, 16); // サイズを大幅拡大
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
-        emissive: 0x660000, // より明るい発光
-        roughness: 0.2,
-        metalness: 0.1
+        emissive: 0xff0000, // 強い発光
+        emissiveIntensity: 0.5,
+        roughness: 0.1,
+        metalness: 0.3
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(data.x, data.y, data.z);
     mesh.castShadow = true;
+    
+    // 光源も追加して更に目立たせる
+    const pointLight = new THREE.PointLight(0xff0000, 2, 10);
+    pointLight.position.copy(mesh.position);
+    scene.add(pointLight);
+    mesh.userData.light = pointLight;
+    
     scene.add(mesh);
     redItems[id] = mesh;
     
@@ -1373,21 +1381,27 @@ function animate() {
         canJump = true;
     }
 
-    // 赤いアイテムとの衝突判定（デバッグ強化）
+    // 🚨修正: 赤いアイテムとの衝突判定（強化版）
     for (const id in redItems) {
         const item = redItems[id];
         const distance = controls.getObject().position.distanceTo(item.position);
-        if (distance < 1.5) { // 判定範囲を拡大
+        if (distance < 2.0) { // 判定範囲を大幅拡大
             console.log(`赤いアイテム ${id} に接触！距離: ${distance.toFixed(2)}`);
             ws.send(JSON.stringify({ type: 'collect_red_item', itemId: id }));
         }
     }
 
-    // 赤いアイテムの回転アニメーション（より目立つように）
+    // 🚨修正: 赤いアイテムの回転アニメーション（超目立つ）
     for (const id in redItems) {
-        redItems[id].rotation.y += delta * 4; // 回転速度アップ
-        redItems[id].rotation.x += delta * 2; // X軸回転も追加
-        redItems[id].position.y = 0.8 + Math.sin(time * 0.005 + parseFloat(id.slice(8)) * 0.5) * 0.4; // より大きな浮遊
+        redItems[id].rotation.y += delta * 6; // 超高速回転
+        redItems[id].rotation.x += delta * 4; 
+        redItems[id].position.y = 2.0 + Math.sin(time * 0.01) * 1.0; // 大きな浮遊
+        
+        // さらに目立つように光らせる
+        if (redItems[id].material) {
+            redItems[id].material.emissive.setHex(0xff0000);
+            redItems[id].material.emissiveIntensity = 0.5 + Math.sin(time * 0.01) * 0.5;
+        }
     }
 
     // 位置情報の送信
@@ -1410,7 +1424,7 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 鬼ごっこの判定（直接タッチ + ！マーク表示機能付き）
+// 🚨修正: 鬼ごっこの判定（直接タッチを確実に動作）
 setInterval(() => {
     if (!isConnected) return;
     
@@ -1421,16 +1435,18 @@ setInterval(() => {
             const otherPlayer = players[id];
             const distance = controls.getObject().position.distanceTo(otherPlayer.position);
             
-            if (distance < 2.0) {
-                // 直接タッチで鬼交代
+            console.log(`鬼 ${myId} と プレイヤー ${id} の距離: ${distance.toFixed(2)}`);
+            
+            if (distance < 3.0) { // 判定距離を拡大
+                console.log(`直接タッチ検出！鬼交代を実行: ${myId} → ${id}`);
                 ws.send(JSON.stringify({ 
                     type: 'tag_player',
                     id: myId,
                     taggedId: id 
                 }));
                 break;
-            } else if (distance < 2.5) {
-                // 距離が近い場合、相手に！マークを表示
+            } else if (distance < 4.0) {
+                // ！マーク表示
                 ws.send(JSON.stringify({ 
                     type: 'show_exclamation',
                     playerId: id
@@ -1442,18 +1458,16 @@ setInterval(() => {
         if (players[oniId]) {
             const distance = controls.getObject().position.distanceTo(players[oniId].position);
             
-            if (distance < 2.5 && !showExclamation) {
-                // 鬼が近づいた場合、自分に！マークを表示
+            if (distance < 4.0 && !showExclamation) {
                 showExclamation = true;
                 showExclamationMark();
-            } else if (distance >= 2.5 && showExclamation) {
-                // 鬼が離れた場合、！マークを非表示
+            } else if (distance >= 4.0 && showExclamation) {
                 showExclamation = false;
                 hideExclamationMark();
             }
         }
     }
-}, 300);
+}, 100); // より頻繁にチェック
 
 // メッセージ表示関数
 function showMessage(text, type = 'info', duration = 3000) {

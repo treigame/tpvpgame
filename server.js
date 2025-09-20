@@ -55,70 +55,28 @@ function sendToPlayer(playerId, message) {
     });
 }
 
-// 赤いアイテム生成関数（建物を考慮）
+// 赤いアイテム生成関数（シンプル版）
 function generateRedItems() {
     redItems = {};
-    const BOUNDARY = 80;
-    const MIN_DISTANCE = 6; // 最小距離を小さくして生成しやすく
-    const BUILDING_RADIUS = 25;
+    console.log('赤いアイテム強制生成開始...');
     
-    console.log('赤いアイテム生成開始...');
-    
+    // シンプルに必ず生成する
     for (let i = 0; i < RED_ITEM_COUNT; i++) {
-        let x, z, attempts = 0;
-        let validPosition = false;
-        
-        while (!validPosition && attempts < 200) { // 試行回数を増加
-            // より広い範囲で生成
-            x = (Math.random() - 0.5) * BOUNDARY * 2.2;
-            z = (Math.random() - 0.5) * BOUNDARY * 2.2;
-            
-            validPosition = true;
-            
-            // 建物の中心部を避ける（1階の広間は除く）
-            const distanceFromCenter = Math.sqrt(x * x + z * z);
-            if (distanceFromCenter < BUILDING_RADIUS) {
-                if (distanceFromCenter > 12) { // 範囲を狭めて広間を広く
-                    validPosition = false;
-                    attempts++;
-                    continue;
-                }
-            }
-            
-            // 他の赤いアイテムとの距離をチェック
-            for (const existingItemId in redItems) {
-                const existingItem = redItems[existingItemId];
-                const distance = Math.sqrt(
-                    Math.pow(x - existingItem.x, 2) + 
-                    Math.pow(z - existingItem.z, 2)
-                );
-                
-                if (distance < MIN_DISTANCE) {
-                    validPosition = false;
-                    break;
-                }
-            }
-            
-            // 境界チェック
-            if (Math.abs(x) > BOUNDARY || Math.abs(z) > BOUNDARY) {
-                validPosition = false;
-            }
-            
-            attempts++;
-        }
-        
         const itemId = `red_item_${i}`;
+        const x = (Math.random() - 0.5) * 150; // より広範囲
+        const z = (Math.random() - 0.5) * 150;
+        
         redItems[itemId] = {
             id: itemId,
-            x: validPosition ? x : (Math.random() - 0.5) * 60, // フォールバック位置
-            y: 0.8, // 少し高めに配置
-            z: validPosition ? z : (Math.random() - 0.5) * 60,
+            x: x,
+            y: 2.0, // より高い位置
+            z: z,
         };
         
-        console.log(`赤いアイテム ${itemId} 生成: (${redItems[itemId].x.toFixed(1)}, ${redItems[itemId].y}, ${redItems[itemId].z.toFixed(1)})`);
+        console.log(`強制生成: ${itemId} at (${x.toFixed(1)}, 2.0, ${z.toFixed(1)})`);
     }
     
-    console.log(`${RED_ITEM_COUNT}個の赤いアイテムを生成しました（実際の生成数: ${Object.keys(redItems).length}）`);
+    console.log(`赤いアイテム強制生成完了: ${Object.keys(redItems).length}個`);
 }
 
 // 初期生成（サーバー起動時に確実に実行）
