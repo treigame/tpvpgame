@@ -1,671 +1,3 @@
-import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-
-// WebSocket接続
-const ws = new WebSocket(`wss://${window.location.host}`);
-let myId = null;
-let players = {};
-let redItems = {}; // 赤いアイテム（オーブの代替）
-let snowballs = {}; // 投げられた雪玉
-let oniId = null;
-let isConnected = false;
-let canThrowSnowball = false; // 雪玉を投げられるかどうか
-let showExclamation = false; // ！マークを表示するかどうか
-
-// ゲーム状態の管理
-let gameState = {
-    score: 0,
-    redItemsCollected: 0, // 収集した赤いアイテムの数
-    timeAsOni: 0,
-    timeAlive: 0,
-    gameStartTime: Date.now(),
-    oniStartTime: null,
-    minimapCanvas: null,
-    minimapCtx: null
-};
-
-// 設定とジョイスティックの状態
-let isTabletMode = false;
-let joystickActive = false;
-let joystickPosition = { x: 0, y: 0 };
-let playerRank = null; // プレイヤーのランク
-let isFlying = false; // 飛行状態
-
-ws.onopen = () => {
-    console.log('WebSocket接続が確立されました。');
-    isConnected = true;
-    ws.send(JSON.stringify({ type: 'get_id' }));
-};
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log('受信したメッセージ:', data.type, data);
-    
-    if (data.type === 'init') {
-        myId = data.id;
-        oniId = data.oniId;
-        console.log(`割り当てられたID: ${myId}`);
-        console.log(`受信した赤いアイテム数: ${Object.keys(data.redItems || {}).length}`);
-        
-        // UI初期化
-        createUI();
-        createSettingsUI();
-        
-        // 鬼の開始時間を記録
-        if (myId === oniId) {
-            gameState.oniStartTime = Date.now();
-            addSword(camera);
-        }
-        
-        for (const id in data.players) {
-            if (id !== myId) {
-                createPlayerMesh(id, data.players[id]);
-            }
-        }
-        
-        // 赤いアイテムの作成（デバッグ情報付き）
-        console.log('赤いアイテム作成開始...');
-        for (const id in data.redItems || {}) {
-            console.log(`赤いアイテム作成: ${id}`, data.redItems[id]);
-            createRedItemMesh(id, data.redItems[id]);
-        }
-        console.log(`赤いアイテム作成完了: ${Object.keys(redItems).length}個`);
-        
-        updateUI();
-    } else if (data.type === 'player_update') {
-        if (data.id !== myId) {
-            if (!players[data.id]) {
-                createPlayerMesh(data.id, data);
-            }
-            players[data.id].position.set(data.x, data.y, data.z);
-        }
-    } else if (data.type === 'remove_player') {
-        if (players[data.id]) {
-            scene.remove(players[data.id]);
-            delete players[data.id];
-        }
-    } else if (data.type === 'red_item_collected') {
-        if (redItems[data.itemId]) {
-            scene.remove(redItems[data.itemId]);
-            delete redItems[data.itemId];
-        }
-        if (data.playerId === myId) {
-            gameState.redItemsCollected++;
-            gameState.score += 10;
-            
-            // 8個集めたら雪玉投擲可能
-            if (gameState.redItemsCollected >= 8) {
-                canThrowSnowball = true;
-                showMessage('雪玉が投げられるようになりました！クリックで投擲', 'success', 3000);
-            }
-        }
-    } else if (data.type === 'snowball_thrown') {
-        createSnowballMesh(data.snowballId, data.snowball);
-    } else if (data.type === 'snowball_hit') {
-        if (snowballs[data.snowballId]) {
-            scene.remove(snowballs[data.snowballId]);
-            delete snowballs[data.snowballId];
-        }
-        if (data.hitPlayerId === oniId) {
-            showMessage('雪玉が鬼に命中！ゲームオーバー！', 'success', 5000);
-            // ゲームオーバー処理
-            setTimeout(() => {
-                location.reload(); // ページリロード
-            }, 3000);
-        }
-    } else if (data.type === 'items_respawned') {
-        // 既存の赤いアイテムを削除
-        for (const id in redItems) {
-            scene.remove(redItems[id]);
-        }
-        redItems = {};
-        
-        // 新しい赤いアイテムを追加
-        for (const id in data.redItems) {
-            createRedItemMesh(id, data.redItems[id]);
-        }
-    } else if (data.type === 'item_respawned') {
-        // 単体アイテムの再出現
-        console.log(`アイテム再出現: ${data.itemId}`, data.item);
-        createRedItemMesh(data.itemId, data.item);
-    } else if (data.type === 'show_exclamation') {
-        if (data.playerId === myId && myId !== oniId) {
-            showExclamation = true;
-            showExclamationMark();
-        }
-    } else if (data.type === 'hide_exclamation') {
-        if (data.playerId === myId) {
-            showExclamation = false;
-            hideExclamationMark();
-        }
-    } else if (data.type === 'oni_changed') {
-        const oldOni = oniId;
-        oniId = data.oniId;
-        console.log(`鬼が交代しました: ${oniId}`);
-        
-        // 鬼時間の記録
-        if (oldOni === myId && gameState.oniStartTime) {
-            gameState.timeAsOni += Date.now() - gameState.oniStartTime;
-            gameState.oniStartTime = null;
-        }
-        if (oniId === myId) {
-            gameState.oniStartTime = Date.now();
-        }
-        
-        // 剣の管理
-        if (oldOni === myId) {
-            removeSword(camera);
-        } else if (players[oldOni] && players[oldOni].sword) {
-            removeSword(players[oldOni]);
-        }
-        
-        if (oniId === myId) {
-            addSword(camera);
-            // 鬼になったら雪玉投擲無効
-            canThrowSnowball = false;
-            gameState.redItemsCollected = 0;
-        } else if (players[oniId] && !players[oniId].sword) {
-            addSword(players[oniId]);
-        }
-        
-        // プレイヤーの色を更新
-        updatePlayerColors();
-        updateUI();
-    } else if (data.type === 'player_rank_updated') {
-        // プレイヤーのランク更新
-        if (data.playerId !== myId && players[data.playerId]) {
-            if (data.rank) {
-                addRankDisplay(players[data.playerId], data.rank);
-            } else {
-                removeRankDisplay(players[data.playerId]);
-            }
-        }
-    }
-};
-
-ws.onclose = () => {
-    console.log('WebSocket接続が切断されました。');
-    isConnected = false;
-};
-
-ws.onerror = (error) => {
-    console.error('WebSocket エラー:', error);
-    isConnected = false;
-};
-
-// Three.jsシーンのセットアップ
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
-
-// 光源
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(20, 50, 20);
-directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
-directionalLight.shadow.camera.near = 0.5;
-directionalLight.shadow.camera.far = 500;
-directionalLight.shadow.camera.left = -100;
-directionalLight.shadow.camera.right = 100;
-directionalLight.shadow.camera.top = 100;
-directionalLight.shadow.camera.bottom = -100;
-scene.add(directionalLight);
-
-// チェッカーパターンの地面
-const planeGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
-const textureCanvas = document.createElement('canvas');
-textureCanvas.width = 512;
-textureCanvas.height = 512;
-const ctx = textureCanvas.getContext('2d');
-const tileSize = 32;
-for (let x = 0; x < 16; x++) {
-    for (let y = 0; y < 16; y++) {
-        ctx.fillStyle = (x + y) % 2 === 0 ? '#666666' : '#333333';
-        ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-    }
-}
-const planeTexture = new THREE.CanvasTexture(textureCanvas);
-planeTexture.wrapS = THREE.RepeatWrapping;
-planeTexture.wrapT = THREE.RepeatWrapping;
-planeTexture.repeat.set(10, 10);
-
-const planeMaterial = new THREE.MeshStandardMaterial({ 
-    map: planeTexture,
-    roughness: 0.8,
-    metalness: 0.1
-});
-const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-plane.rotation.x = -Math.PI / 2;
-plane.position.y = -1;
-plane.receiveShadow = true;
-scene.add(plane);
-
-// 建物の作成（鬼ごっこ用の面白い建物）
-function createBuildings() {
-    const buildings = [];
-    
-    // 床と同じチェッカーパターンの材質を使用
-    const buildingMaterial = new THREE.MeshStandardMaterial({ 
-        map: planeTexture,
-        roughness: 0.8,
-        metalness: 0.1
-    });
-    
-    // 色のバリエーション
-    const colors = [
-        0x8B4513, // 茶色
-        0x654321, // ダークブラウン
-        0xA0522D, // シエナ
-        0xD2691E, // チョコレート
-        0xB8860B, // ダークゴールデンロッド
-        0x228B22, // フォレストグリーン
-        0x32CD32, // ライムグリーン
-        0x006400  // ダークグリーン
-    ];
-    
-    // 建物の配置パターン（鬼ごっこに適した設計）
-    const buildingData = [
-        // 中央の大きな迷路建物
-        { x: 0, z: 0, type: 'maze' },
-        
-        // コーナーの塔
-        { x: 60, z: 60, type: 'tower' },
-        { x: -60, z: 60, type: 'tower' },
-        { x: 60, z: -60, type: 'tower' },
-        { x: -60, z: -60, type: 'tower' },
-        
-        // L字型建物
-        { x: 30, z: 0, type: 'lshape' },
-        { x: -30, z: 0, type: 'lshape' },
-        { x: 0, z: 30, type: 'lshape' },
-        { x: 0, z: -30, type: 'lshape' },
-        
-        // 小さな隠れ家
-        { x: 45, z: 20, type: 'hideout' },
-        { x: -45, z: 20, type: 'hideout' },
-        { x: 45, z: -20, type: 'hideout' },
-        { x: -45, z: -20, type: 'hideout' },
-        { x: 20, z: 45, type: 'hideout' },
-        { x: -20, z: 45, type: 'hideout' },
-        { x: 20, z: -45, type: 'hideout' },
-        { x: -20, z: -45, type: 'hideout' }
-    ];
-    
-    buildingData.forEach((building, index) => {
-        const colorIndex = index % colors.length;
-        const coloredMaterial = buildingMaterial.clone();
-        coloredMaterial.color.setHex(colors[colorIndex]);
-        
-        let buildingGroup;
-        
-        switch (building.type) {
-            case 'maze':
-                buildingGroup = createMazeBuilding(coloredMaterial);
-            case 'ShiftLeft':
-        case 'ShiftRight':
-            // OWNER専用：飛行中はShiftで下降
-            if (playerRank === 'OWNER' && isFlying) {
-                velocity.y -= 12;
-            }
-            break;
-            case 'tower':
-                buildingGroup = createTowerBuilding(coloredMaterial);
-                break;
-            case 'lshape':
-                buildingGroup = createLShapeBuilding(coloredMaterial);
-                break;
-            case 'hideout':
-                buildingGroup = createHideoutBuilding(coloredMaterial);
-                break;
-        }
-        
-        if (buildingGroup) {
-            buildingGroup.position.set(building.x, 0, building.z);
-            scene.add(buildingGroup);
-            buildings.push(buildingGroup);
-        }
-    });
-    
-    console.log('鬼ごっこ用建物を作成しました:', buildings.length + '個');
-    return buildings;
-}
-
-// 迷路建物の作成
-function createMazeBuilding(material) {
-    const group = new THREE.Group();
-    const wallHeight = 8;
-    const wallThickness = 1;
-    
-    // 外壁
-    const walls = [
-        { x: 0, z: -15, w: 30, h: wallHeight, d: wallThickness },
-        { x: 0, z: 15, w: 30, h: wallHeight, d: wallThickness },
-        { x: -15, z: 0, w: wallThickness, h: wallHeight, d: 30 },
-        { x: 15, z: 0, w: wallThickness, h: wallHeight, d: 30 }
-    ];
-    
-    // 内部の迷路壁
-    const mazeWalls = [
-        { x: -7, z: -7, w: 8, h: wallHeight, d: wallThickness },
-        { x: 7, z: 7, w: 8, h: wallHeight, d: wallThickness },
-        { x: -7, z: 7, w: wallThickness, h: wallHeight, d: 8 },
-        { x: 7, z: -7, w: wallThickness, h: wallHeight, d: 8 },
-        { x: 0, z: 0, w: 6, h: wallHeight, d: wallThickness }
-    ];
-    
-    [...walls, ...mazeWalls].forEach(wall => {
-        const geometry = new THREE.BoxGeometry(wall.w, wall.h, wall.d);
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(wall.x, wall.h/2, wall.z);
-        mesh.receiveShadow = true;
-        mesh.castShadow = true;
-        group.add(mesh);
-    });
-    
-    return group;
-}
-
-// 塔建物の作成
-function createTowerBuilding(material) {
-    const group = new THREE.Group();
-    
-    // 3層の塔
-    for (let i = 0; i < 3; i++) {
-        const size = 8 - i * 1.5;
-        const height = 6;
-        const y = i * height;
-        
-        const geometry = new THREE.BoxGeometry(size, height, size);
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(0, y + height/2, 0);
-        mesh.receiveShadow = true;
-        mesh.castShadow = true;
-        group.add(mesh);
-        
-        // 各層に窓の開口部を作る（見た目のみ）
-        if (i < 2) {
-            const openingGeometry = new THREE.BoxGeometry(size + 0.1, 2, 2);
-            const openingMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x000000,
-                transparent: true,
-                opacity: 0.8
-            });
-            const opening = new THREE.Mesh(openingGeometry, openingMaterial);
-            opening.position.set(0, y + height/2, 0);
-            group.add(opening);
-        }
-    }
-    
-    return group;
-}
-
-// L字型建物の作成
-function createLShapeBuilding(material) {
-    const group = new THREE.Group();
-    const height = 6;
-    
-    // L字の縦部分
-    const vertical = new THREE.Mesh(
-        new THREE.BoxGeometry(6, height, 12),
-        material
-    );
-    vertical.position.set(0, height/2, 3);
-    vertical.receiveShadow = true;
-    vertical.castShadow = true;
-    group.add(vertical);
-    
-    // L字の横部分
-    const horizontal = new THREE.Mesh(
-        new THREE.BoxGeometry(12, height, 6),
-        material
-    );
-    horizontal.position.set(3, height/2, -3);
-    horizontal.receiveShadow = true;
-    horizontal.castShadow = true;
-    group.add(horizontal);
-    
-    return group;
-}
-
-// 隠れ家建物の作成
-function createHideoutBuilding(material) {
-    const group = new THREE.Group();
-    const height = 4;
-    
-    const geometry = new THREE.BoxGeometry(5, height, 5);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(0, height/2, 0);
-    mesh.receiveShadow = true;
-    mesh.castShadow = true;
-    group.add(mesh);
-    
-    return group;
-}
-
-// 外周の壁と障害物の作成
-const WALL_SIZE = 200;
-const WALL_HEIGHT = 20;
-const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0xffffff,
-    roughness: 0.3,
-    metalness: 0.1
-});
-
-const walls = [];
-const blocks = []; // ブロック衝突判定用
-
-// 外周の壁
-const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
-wall1.position.set(0, (WALL_HEIGHT / 2) - 1, -WALL_SIZE / 2);
-wall1.receiveShadow = true;
-wall1.castShadow = true;
-scene.add(wall1);
-walls.push(wall1);
-
-const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
-wall2.position.set(0, (WALL_HEIGHT / 2) - 1, WALL_SIZE / 2);
-wall2.receiveShadow = true;
-wall2.castShadow = true;
-scene.add(wall2);
-walls.push(wall2);
-
-const wall3 = new THREE.Mesh(new THREE.BoxGeometry(2, WALL_HEIGHT, WALL_SIZE), wallMaterial);
-wall3.position.set(-WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
-wall3.receiveShadow = true;
-wall3.castShadow = true;
-scene.add(wall3);
-walls.push(wall3);
-
-const wall4 = new THREE.Mesh(new THREE.BoxGeometry(2, WALL_HEIGHT, WALL_SIZE), wallMaterial);
-wall4.position.set(WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
-wall4.receiveShadow = true;
-wall4.castShadow = true;
-scene.add(wall4);
-walls.push(wall4);
-
-// ブロック障害物を作成
-const gameBuildings = createBuildings();
-blocks.push(...gameBuildings);
-
-// UIエレメントの作成
-function createUI() {
-    const uiContainer = document.createElement('div');
-    uiContainer.id = 'game-ui';
-    uiContainer.style.cssText = `
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        color: white;
-        font-family: 'Arial', sans-serif;
-        font-size: 16px;
-        z-index: 1000;
-        pointer-events: none;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 15px;
-        border-radius: 10px;
-        border: 2px solid #00ff00;
-        min-width: 200px;
-    `;
-    
-    uiContainer.innerHTML = `
-        <div id="player-info">
-            <div>プレイヤー: <span id="player-id">${myId}</span></div>
-            <div>役割: <span id="role">${myId === oniId ? '👹 鬼' : '🏃 逃走者'}</span></div>
-            <div>スコア: <span id="score">${gameState.score}</span></div>
-            <div id="red-items-count" style="display: ${myId !== oniId ? 'block' : 'none'}">
-                赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/8
-            </div>
-            <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
-                雪玉投擲可能！
-            </div>
-        </div>
-        <div id="timer-info" style="margin-top: 10px;">
-            <div>ゲーム時間: <span id="game-time">00:00</span></div>
-            <div id="oni-time" style="display: ${myId === oniId ? 'block' : 'none'}">
-                鬼時間: <span id="oni-duration">00:00</span>
-            </div>
-        </div>
-        <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
-            <div>W: 後退 | S: 前進 | A: 右移動 | D: 左移動 | Space: ジャンプ</div>
-            <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
-            <div>🔴赤いアイテム8個で雪玉投擲可能 🧱ブロック探索</div>
-        </div>
-    `;
-    
-    document.body.appendChild(uiContainer);
-    createMinimap();
-}
-
-// ミニマップの作成
-function createMinimap() {
-    const minimapContainer = document.createElement('div');
-    minimapContainer.id = 'minimap';
-    minimapContainer.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        width: 150px;
-        height: 150px;
-        background: rgba(0, 0, 0, 0.8);
-        border: 2px solid #ffffff;
-        border-radius: 10px;
-        z-index: 1000;
-    `;
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = 146;
-    canvas.height = 146;
-    canvas.style.cssText = `
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        border-radius: 8px;
-    `;
-    
-    minimapContainer.appendChild(canvas);
-    document.body.appendChild(minimapContainer);
-    
-    gameState.minimapCanvas = canvas;
-    gameState.minimapCtx = canvas.getContext('2d');
-}
-
-// プレイヤーメッシュ
-function createPlayerMesh(id, data) {
-    const group = new THREE.Group();
-    
-    // 胴体
-    const bodyGeometry = new THREE.CapsuleGeometry(0.8, 1.6);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
-        color: id === oniId ? 0x0000ff : 0x00ff00,
-        roughness: 0.4,
-        metalness: 0.1
-    });
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.castShadow = true;
-    group.add(body);
-    group.bodyMesh = body;
-    
-    // 頭
-    const headGeometry = new THREE.SphereGeometry(0.5);
-    const headMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xffdbac,
-        roughness: 0.6,
-        metalness: 0.0
-    });
-    const head = new THREE.Mesh(headGeometry, headMaterial);
-    head.position.y = 1.5;
-    head.castShadow = true;
-    group.add(head);
-    
-    group.position.set(data.x, data.y, data.z);
-    scene.add(group);
-    players[id] = group;
-    
-    if (id === oniId) {
-        addSword(group);
-    }
-    
-    return group;
-}
-
-// プレイヤーの色を更新
-function updatePlayerColors() {
-    for (const id in players) {
-        const player = players[id];
-        if (player.bodyMesh) {
-            player.bodyMesh.material.color.setHex(id === oniId ? 0x0000ff : 0x00ff00);
-        }
-    }
-}
-
-// 剣を追加する関数（右下から持つように修正）
-function addSword(mesh) {
-    if (mesh.sword) return;
-    
-    const swordGroup = new THREE.Group();
-    
-    // 刃
-    const bladeGeometry = new THREE.BoxGeometry(0.1, 0.1, 1.5);
-    const bladeMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xc0c0c0,
-        metalness: 0.8,
-        roughness: 0.2
-    });
-    const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
-    blade.position.z = -0.75;
-    blade.castShadow = true;
-    swordGroup.add(blade);
-    
-    // 柄
-    const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.5);
-    const handleMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x8B4513,
-        roughness: 0.8,
-        metalness: 0.1
-    });
-    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-    handle.position.z = 0.25;
-    handle.rotation.x = Math.PI / 2;
-    handle.castShadow = true;
-    swordGroup.add(handle);
-    
-    // 右下から持つ位置に変更
-    swordGroup.position.set(1.0, -1.2, -0.5); // 右下の位置
-    swordGroup.rotation.x = Math.PI / 4; // 斜め下向き
-    swordGroup.rotation.y = -Math.PI / 6; // 少し内側向き
-    
-    mesh.add(swordGroup);
-    mesh.sword = swordGroup;
-}
-
 // 剣を削除する関数
 function removeSword(mesh) {
     if (mesh.sword) {
@@ -780,6 +112,68 @@ function createRedItemMesh(id, data) {
     console.log(`赤いアイテム ${id} を位置 (${data.x}, ${data.y}, ${data.z}) に作成しました`);
     
     return mesh;
+}
+
+// ワープホールメッシュの作成
+function createWarpHoleMesh(id, data) {
+    console.log(`ワープホールメッシュ作成: ${id}`, data);
+    
+    const group = new THREE.Group();
+    
+    // 外側のリング（青い渦）
+    const outerGeometry = new THREE.RingGeometry(1.5, 2.5, 32);
+    const outerMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    const outerRing = new THREE.Mesh(outerGeometry, outerMaterial);
+    outerRing.rotation.x = -Math.PI / 2;
+    group.add(outerRing);
+    
+    // 内側のリング（紫の渦）
+    const innerGeometry = new THREE.RingGeometry(0.5, 1.5, 32);
+    const innerMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff00ff,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    });
+    const innerRing = new THREE.Mesh(innerGeometry, innerMaterial);
+    innerRing.rotation.x = -Math.PI / 2;
+    group.add(innerRing);
+    
+    // 中心の光る球
+    const centerGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+    const centerMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xffffff,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.9
+    });
+    const centerSphere = new THREE.Mesh(centerGeometry, centerMaterial);
+    centerSphere.position.y = 0.5;
+    group.add(centerSphere);
+    
+    // パーティクル効果用の光源
+    const pointLight = new THREE.PointLight(0x00ffff, 3, 15);
+    pointLight.position.copy(group.position);
+    pointLight.position.y += 1;
+    scene.add(pointLight);
+    group.userData.light = pointLight;
+    
+    group.position.set(data.x, data.y, data.z);
+    scene.add(group);
+    warpHoles[id] = group;
+    
+    // 回転アニメーション用のプロパティ
+    group.userData.rotationSpeed = Math.random() * 0.02 + 0.01;
+    
+    console.log(`ワープホール ${id} を位置 (${data.x}, ${data.y}, ${data.z}) に作成しました`);
+    
+    return group;
 }
 
 // 雪玉メッシュの作成
@@ -1183,7 +577,10 @@ function setupJoystickControls() {
     
     // ジャンプボタン
     function jump() {
-        if (canJump) {
+        if (playerRank === 'OWNER' && isFlying) {
+            // 飛行中はスペースで上昇
+            velocity.y += 12;
+        } else if (canJump) {
             velocity.y += 18; // ジャンプ力を増加
             canJump = false;
         }
@@ -1423,6 +820,13 @@ document.addEventListener('keydown', (event) => {
                 }
             }
             break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+            // OWNER専用：飛行中はShiftで下降
+            if (playerRank === 'OWNER' && isFlying) {
+                velocity.y -= 12;
+            }
+            break;
     }
 });
 
@@ -1578,6 +982,18 @@ function updateMinimap() {
         
         ctx.beginPath();
         ctx.arc(itemX, itemZ, 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // ワープホールの位置
+    ctx.fillStyle = '#00ffff';
+    for (const id in warpHoles) {
+        const warpHole = warpHoles[id];
+        const warpX = centerX + warpHole.position.x * scale;
+        const warpZ = centerY + warpHole.position.z * scale;
+        
+        ctx.beginPath();
+        ctx.arc(warpX, warpZ, 3, 0, Math.PI * 2);
         ctx.fill();
     }
     
@@ -1759,6 +1175,32 @@ function animate() {
         }
     }
 
+    // ワープホールとの衝突判定
+    for (const id in warpHoles) {
+        const warpHole = warpHoles[id];
+        const distance = controls.getObject().position.distanceTo(warpHole.position);
+        if (distance < 2.5) {
+            console.log(`ワープホール ${id} に接触！距離: ${distance.toFixed(2)}`);
+            ws.send(JSON.stringify({ type: 'use_warp_hole', warpHoleId: id }));
+        }
+    }
+
+    // ワープホールの回転アニメーション
+    for (const id in warpHoles) {
+        const warpHole = warpHoles[id];
+        if (warpHole.userData.rotationSpeed) {
+            warpHole.rotation.y += warpHole.userData.rotationSpeed;
+            
+            // 光の点滅効果
+            warpHole.children.forEach((child, index) => {
+                if (child.material && child.material.opacity !== undefined) {
+                    const pulseSpeed = 0.003 + index * 0.001;
+                    child.material.opacity = 0.5 + Math.sin(time * pulseSpeed) * 0.3;
+                }
+            });
+        }
+    }
+
     // 赤いアイテムの回転アニメーション
     for (const id in redItems) {
         redItems[id].rotation.y += delta * 6; // 超高速回転
@@ -1855,116 +1297,695 @@ function showMessage(text, type = 'info', duration = 3000) {
     } else {
         console.log(text);
     }
-}, delta);
-        canJump = false;
-    }, delta);
-        canJump = false;
-    }
+}import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-    // 赤いアイテムとの衝突判定
-    for (const id in redItems) {
-        const item = redItems[id];
-        const distance = controls.getObject().position.distanceTo(item.position);
-        if (distance < 2.0) {
-            console.log(`赤いアイテム ${id} に接触！距離: ${distance.toFixed(2)}`);
-            ws.send(JSON.stringify({ type: 'collect_red_item', itemId: id }));
-        }
-    }
+// WebSocket接続
+const ws = new WebSocket(`wss://${window.location.host}`);
+let myId = null;
+let players = {};
+let redItems = {}; // 赤いアイテム（オーブの代替）
+let snowballs = {}; // 投げられた雪玉
+let warpHoles = {}; // ワープホール
+let oniId = null;
+let isConnected = false;
+let canThrowSnowball = false; // 雪玉を投げられるかどうか
+let showExclamation = false; // ！マークを表示するかどうか
 
-    // 赤いアイテムの回転アニメーション
-    for (const id in redItems) {
-        redItems[id].rotation.y += delta * 6; // 超高速回転
-        redItems[id].rotation.x += delta * 4; 
-        redItems[id].position.y = 2.0 + Math.sin(time * 0.01) * 1.0; // 大きな浮遊
+// ゲーム状態の管理
+let gameState = {
+    score: 0,
+    redItemsCollected: 0, // 収集した赤いアイテムの数
+    timeAsOni: 0,
+    timeAlive: 0,
+    gameStartTime: Date.now(),
+    oniStartTime: null,
+    minimapCanvas: null,
+    minimapCtx: null
+};
+
+// 設定とジョイスティックの状態
+let isTabletMode = false;
+let joystickActive = false;
+let joystickPosition = { x: 0, y: 0 };
+let playerRank = null; // プレイヤーのランク
+let isFlying = false; // 飛行状態
+
+ws.onopen = () => {
+    console.log('WebSocket接続が確立されました。');
+    isConnected = true;
+    ws.send(JSON.stringify({ type: 'get_id' }));
+};
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('受信したメッセージ:', data.type, data);
+    
+    if (data.type === 'init') {
+        myId = data.id;
+        oniId = data.oniId;
+        console.log(`割り当てられたID: ${myId}`);
+        console.log(`受信した赤いアイテム数: ${Object.keys(data.redItems || {}).length}`);
         
-        // さらに目立つように光らせる
-        if (redItems[id].material) {
-            redItems[id].material.emissive.setHex(0xff0000);
-            redItems[id].material.emissiveIntensity = 0.5 + Math.sin(time * 0.01) * 0.5;
+        // UI初期化
+        createUI();
+        createSettingsUI();
+        
+        // 鬼の開始時間を記録
+        if (myId === oniId) {
+            gameState.oniStartTime = Date.now();
+            addSword(camera);
+        }
+        
+        for (const id in data.players) {
+            if (id !== myId) {
+                createPlayerMesh(id, data.players[id]);
+            }
+        }
+        
+        // 赤いアイテムの作成（デバッグ情報付き）
+        console.log('赤いアイテム作成開始...');
+        for (const id in data.redItems || {}) {
+            console.log(`赤いアイテム作成: ${id}`, data.redItems[id]);
+            createRedItemMesh(id, data.redItems[id]);
+        }
+        console.log(`赤いアイテム作成完了: ${Object.keys(redItems).length}個`);
+        
+        // ワープホールの作成
+        for (const id in data.warpHoles || {}) {
+            createWarpHoleMesh(id, data.warpHoles[id]);
+        }
+        
+        updateUI();
+    } else if (data.type === 'player_update') {
+        if (data.id !== myId) {
+            if (!players[data.id]) {
+                createPlayerMesh(data.id, data);
+            }
+            players[data.id].position.set(data.x, data.y, data.z);
+        }
+    } else if (data.type === 'remove_player') {
+        if (players[data.id]) {
+            scene.remove(players[data.id]);
+            delete players[data.id];
+        }
+    } else if (data.type === 'red_item_collected') {
+        if (redItems[data.itemId]) {
+            scene.remove(redItems[data.itemId]);
+            delete redItems[data.itemId];
+        }
+        if (data.playerId === myId) {
+            gameState.redItemsCollected++;
+            gameState.score += 10;
+            
+            // 8個集めたら雪玉投擲可能
+            if (gameState.redItemsCollected >= 8) {
+                canThrowSnowball = true;
+                showMessage('雪玉が投げられるようになりました！クリックで投擲', 'success', 3000);
+            }
+        }
+    } else if (data.type === 'snowball_thrown') {
+        createSnowballMesh(data.snowballId, data.snowball);
+    } else if (data.type === 'snowball_hit') {
+        if (snowballs[data.snowballId]) {
+            scene.remove(snowballs[data.snowballId]);
+            delete snowballs[data.snowballId];
+        }
+        if (data.hitPlayerId === oniId) {
+            showMessage('雪玉が鬼に命中！ゲームオーバー！', 'success', 5000);
+            // ゲームオーバー処理
+            setTimeout(() => {
+                location.reload(); // ページリロード
+            }, 3000);
+        }
+    } else if (data.type === 'items_respawned') {
+        // 既存の赤いアイテムを削除
+        for (const id in redItems) {
+            scene.remove(redItems[id]);
+        }
+        redItems = {};
+        
+        // 新しい赤いアイテムを追加
+        for (const id in data.redItems) {
+            createRedItemMesh(id, data.redItems[id]);
+        }
+    } else if (data.type === 'item_respawned') {
+        // 単体アイテムの再出現
+        console.log(`アイテム再出現: ${data.itemId}`, data.item);
+        createRedItemMesh(data.itemId, data.item);
+    } else if (data.type === 'warp_hole_spawned') {
+        // ワープホール出現
+        createWarpHoleMesh(data.warpHoleId, data.warpHole);
+    } else if (data.type === 'warp_hole_despawned') {
+        // ワープホール消滅
+        if (warpHoles[data.warpHoleId]) {
+            scene.remove(warpHoles[data.warpHoleId]);
+            delete warpHoles[data.warpHoleId];
+        }
+    } else if (data.type === 'player_warped') {
+        // プレイヤーワープ
+        if (data.playerId === myId) {
+            controls.getObject().position.set(data.newX, data.newY, data.newZ);
+            showMessage('ワープしました！', 'success', 2000);
+        }
+    } else if (data.type === 'show_exclamation') {
+        if (data.playerId === myId && myId !== oniId) {
+            showExclamation = true;
+            showExclamationMark();
+        }
+    } else if (data.type === 'hide_exclamation') {
+        if (data.playerId === myId) {
+            showExclamation = false;
+            hideExclamationMark();
+        }
+    } else if (data.type === 'oni_changed') {
+        const oldOni = oniId;
+        oniId = data.oniId;
+        console.log(`鬼が交代しました: ${oniId}`);
+        
+        // 鬼時間の記録
+        if (oldOni === myId && gameState.oniStartTime) {
+            gameState.timeAsOni += Date.now() - gameState.oniStartTime;
+            gameState.oniStartTime = null;
+        }
+        if (oniId === myId) {
+            gameState.oniStartTime = Date.now();
+        }
+        
+        // 剣の管理
+        if (oldOni === myId) {
+            removeSword(camera);
+        } else if (players[oldOni] && players[oldOni].sword) {
+            removeSword(players[oldOni]);
+        }
+        
+        if (oniId === myId) {
+            addSword(camera);
+            // 鬼になったら雪玉投擲無効
+            canThrowSnowball = false;
+            gameState.redItemsCollected = 0;
+        } else if (players[oniId] && !players[oniId].sword) {
+            addSword(players[oniId]);
+        }
+        
+        // プレイヤーの色を更新
+        updatePlayerColors();
+        updateUI();
+    } else if (data.type === 'player_rank_updated') {
+        // プレイヤーのランク更新
+        if (data.playerId !== myId && players[data.playerId]) {
+            if (data.rank) {
+                addRankDisplay(players[data.playerId], data.rank);
+            } else {
+                removeRankDisplay(players[data.playerId]);
+            }
         }
     }
+};
 
-    // 位置情報の送信
-    sendPositionUpdate();
+ws.onclose = () => {
+    console.log('WebSocket接続が切断されました。');
+    isConnected = false;
+};
 
-    // UIとミニマップの更新
-    updateUI();
-    updateMinimap();
+ws.onerror = (error) => {
+    console.error('WebSocket エラー:', error);
+    isConnected = false;
+};
 
-    renderer.render(scene, camera);
-    prevTime = time;
+// Three.jsシーンのセットアップ
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// 光源
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(20, 50, 20);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 500;
+directionalLight.shadow.camera.left = -100;
+directionalLight.shadow.camera.right = 100;
+directionalLight.shadow.camera.top = 100;
+directionalLight.shadow.camera.bottom = -100;
+scene.add(directionalLight);
+
+// チェッカーパターンの地面
+const planeGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
+const textureCanvas = document.createElement('canvas');
+textureCanvas.width = 512;
+textureCanvas.height = 512;
+const ctx = textureCanvas.getContext('2d');
+const tileSize = 32;
+for (let x = 0; x < 16; x++) {
+    for (let y = 0; y < 16; y++) {
+        ctx.fillStyle = (x + y) % 2 === 0 ? '#666666' : '#333333';
+        ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+    }
+}
+const planeTexture = new THREE.CanvasTexture(textureCanvas);
+planeTexture.wrapS = THREE.RepeatWrapping;
+planeTexture.wrapT = THREE.RepeatWrapping;
+planeTexture.repeat.set(10, 10);
+
+const planeMaterial = new THREE.MeshStandardMaterial({ 
+    map: planeTexture,
+    roughness: 0.8,
+    metalness: 0.1
+});
+const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+plane.rotation.x = -Math.PI / 2;
+plane.position.y = -1;
+plane.receiveShadow = true;
+scene.add(plane);
+
+// 建物の作成（鬼ごっこ用の面白い建物）
+function createBuildings() {
+    const buildings = [];
+    
+    // 床と同じチェッカーパターンの材質を使用
+    const buildingMaterial = new THREE.MeshStandardMaterial({ 
+        map: planeTexture,
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    
+    // 色のバリエーション
+    const colors = [
+        0x8B4513, // 茶色
+        0x654321, // ダークブラウン
+        0xA0522D, // シエナ
+        0xD2691E, // チョコレート
+        0xB8860B, // ダークゴールデンロッド
+        0x228B22, // フォレストグリーン
+        0x32CD32, // ライムグリーン
+        0x006400  // ダークグリーン
+    ];
+    
+    // 建物の配置パターン（鬼ごっこに適した設計）
+    const buildingData = [
+        // 中央の大きな迷路建物
+        { x: 0, z: 0, type: 'maze' },
+        
+        // コーナーの塔
+        { x: 60, z: 60, type: 'tower' },
+        { x: -60, z: 60, type: 'tower' },
+        { x: 60, z: -60, type: 'tower' },
+        { x: -60, z: -60, type: 'tower' },
+        
+        // L字型建物
+        { x: 30, z: 0, type: 'lshape' },
+        { x: -30, z: 0, type: 'lshape' },
+        { x: 0, z: 30, type: 'lshape' },
+        { x: 0, z: -30, type: 'lshape' },
+        
+        // 小さな隠れ家
+        { x: 45, z: 20, type: 'hideout' },
+        { x: -45, z: 20, type: 'hideout' },
+        { x: 45, z: -20, type: 'hideout' },
+        { x: -45, z: -20, type: 'hideout' },
+        { x: 20, z: 45, type: 'hideout' },
+        { x: -20, z: 45, type: 'hideout' },
+        { x: 20, z: -45, type: 'hideout' },
+        { x: -20, z: -45, type: 'hideout' }
+    ];
+    
+    buildingData.forEach((building, index) => {
+        const colorIndex = index % colors.length;
+        const coloredMaterial = buildingMaterial.clone();
+        coloredMaterial.color.setHex(colors[colorIndex]);
+        
+        let buildingGroup;
+        
+        switch (building.type) {
+            case 'maze':
+                buildingGroup = createMazeBuilding(coloredMaterial);
+                break;
+            case 'tower':
+                buildingGroup = createTowerBuilding(coloredMaterial);
+                break;
+            case 'lshape':
+                buildingGroup = createLShapeBuilding(coloredMaterial);
+                break;
+            case 'hideout':
+                buildingGroup = createHideoutBuilding(coloredMaterial);
+                break;
+        }
+        
+        if (buildingGroup) {
+            buildingGroup.position.set(building.x, 0, building.z);
+            scene.add(buildingGroup);
+            buildings.push(buildingGroup);
+        }
+    });
+    
+    console.log('鬼ごっこ用建物を作成しました:', buildings.length + '個');
+    return buildings;
 }
 
-animate();
+// 迷路建物の作成
+function createMazeBuilding(material) {
+    const group = new THREE.Group();
+    const wallHeight = 8;
+    const wallThickness = 1;
+    
+    // 外壁
+    const walls = [
+        { x: 0, z: -15, w: 30, h: wallHeight, d: wallThickness },
+        { x: 0, z: 15, w: 30, h: wallHeight, d: wallThickness },
+        { x: -15, z: 0, w: wallThickness, h: wallHeight, d: 30 },
+        { x: 15, z: 0, w: wallThickness, h: wallHeight, d: 30 }
+    ];
+    
+    // 内部の迷路壁
+    const mazeWalls = [
+        { x: -7, z: -7, w: 8, h: wallHeight, d: wallThickness },
+        { x: 7, z: 7, w: 8, h: wallHeight, d: wallThickness },
+        { x: -7, z: 7, w: wallThickness, h: wallHeight, d: 8 },
+        { x: 7, z: -7, w: wallThickness, h: wallHeight, d: 8 },
+        { x: 0, z: 0, w: 6, h: wallHeight, d: wallThickness }
+    ];
+    
+    [...walls, ...mazeWalls].forEach(wall => {
+        const geometry = new THREE.BoxGeometry(wall.w, wall.h, wall.d);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(wall.x, wall.h/2, wall.z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        group.add(mesh);
+    });
+    
+    return group;
+}
 
-// ウィンドウリサイズ対応
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+// 塔建物の作成
+function createTowerBuilding(material) {
+    const group = new THREE.Group();
+    
+    // 3層の塔
+    for (let i = 0; i < 3; i++) {
+        const size = 8 - i * 1.5;
+        const height = 6;
+        const y = i * height;
+        
+        const geometry = new THREE.BoxGeometry(size, height, size);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(0, y + height/2, 0);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        group.add(mesh);
+        
+        // 各層に窓の開口部を作る（見た目のみ）
+        if (i < 2) {
+            const openingGeometry = new THREE.BoxGeometry(size + 0.1, 2, 2);
+            const openingMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000,
+                transparent: true,
+                opacity: 0.8
+            });
+            const opening = new THREE.Mesh(openingGeometry, openingMaterial);
+            opening.position.set(0, y + height/2, 0);
+            group.add(opening);
+        }
+    }
+    
+    return group;
+}
+
+// L字型建物の作成
+function createLShapeBuilding(material) {
+    const group = new THREE.Group();
+    const height = 6;
+    
+    // L字の縦部分
+    const vertical = new THREE.Mesh(
+        new THREE.BoxGeometry(6, height, 12),
+        material
+    );
+    vertical.position.set(0, height/2, 3);
+    vertical.receiveShadow = true;
+    vertical.castShadow = true;
+    group.add(vertical);
+    
+    // L字の横部分
+    const horizontal = new THREE.Mesh(
+        new THREE.BoxGeometry(12, height, 6),
+        material
+    );
+    horizontal.position.set(3, height/2, -3);
+    horizontal.receiveShadow = true;
+    horizontal.castShadow = true;
+    group.add(horizontal);
+    
+    return group;
+}
+
+// 隠れ家建物の作成
+function createHideoutBuilding(material) {
+    const group = new THREE.Group();
+    const height = 4;
+    
+    const geometry = new THREE.BoxGeometry(5, height, 5);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(0, height/2, 0);
+    mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    group.add(mesh);
+    
+    return group;
+}
+
+// 外周の壁と障害物の作成
+const WALL_SIZE = 200;
+const WALL_HEIGHT = 20;
+const wallMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xffffff,
+    roughness: 0.3,
+    metalness: 0.1
 });
 
-// 鬼ごっこの判定（確実な鬼交代システム）
-setInterval(() => {
-    if (!isConnected) return;
-    
-    if (myId === oniId) {
-        // 鬼の場合：自動的な近接判定（剣振り以外）
-        for (const id in players) {
-            if (id === myId) continue;
-            const otherPlayer = players[id];
-            const distance = controls.getObject().position.distanceTo(otherPlayer.position);
-            
-            if (distance < 2.5) { // 自動タッチ判定
-                console.log(`自動近接タッチ検出！鬼交代: ${myId} → ${id}, 距離: ${distance.toFixed(2)}`);
-                ws.send(JSON.stringify({ 
-                    type: 'tag_player',
-                    id: myId,
-                    taggedId: id 
-                }));
-                break;
-            } else if (distance < 4.0) {
-                // ！マーク表示
-                ws.send(JSON.stringify({ 
-                    type: 'show_exclamation',
-                    playerId: id
-                }));
-            }
-        }
-    } else {
-        // 逃走者の場合：鬼との距離をチェック
-        if (players[oniId]) {
-            const distance = controls.getObject().position.distanceTo(players[oniId].position);
-            
-            if (distance < 4.0 && !showExclamation) {
-                showExclamation = true;
-                showExclamationMark();
-            } else if (distance >= 4.0 && showExclamation) {
-                showExclamation = false;
-                hideExclamationMark();
-            }
-        }
-    }
-}, 200); // より頻繁にチェック
+const walls = [];
+const blocks = []; // ブロック衝突判定用
 
-// メッセージ表示関数
-function showMessage(text, type = 'info', duration = 3000) {
-    let messageElement;
+// 外周の壁
+const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
+wall1.position.set(0, (WALL_HEIGHT / 2) - 1, -WALL_SIZE / 2);
+wall1.receiveShadow = true;
+wall1.castShadow = true;
+scene.add(wall1);
+walls.push(wall1);
+
+const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
+wall2.position.set(0, (WALL_HEIGHT / 2) - 1, WALL_SIZE / 2);
+wall2.receiveShadow = true;
+wall2.castShadow = true;
+scene.add(wall2);
+walls.push(wall2);
+
+const wall3 = new THREE.Mesh(new THREE.BoxGeometry(2, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+wall3.position.set(-WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
+wall3.receiveShadow = true;
+wall3.castShadow = true;
+scene.add(wall3);
+walls.push(wall3);
+
+const wall4 = new THREE.Mesh(new THREE.BoxGeometry(2, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+wall4.position.set(WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
+wall4.receiveShadow = true;
+wall4.castShadow = true;
+scene.add(wall4);
+walls.push(wall4);
+
+// 建物を作成
+const gameBuildings = createBuildings();
+blocks.push(...gameBuildings);
+
+// UIエレメントの作成
+function createUI() {
+    const uiContainer = document.createElement('div');
+    uiContainer.id = 'game-ui';
+    uiContainer.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: white;
+        font-family: 'Arial', sans-serif;
+        font-size: 16px;
+        z-index: 1000;
+        pointer-events: none;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #00ff00;
+        min-width: 200px;
+    `;
     
-    if (type === 'error') {
-        messageElement = document.getElementById('error-message');
-    } else if (type === 'success') {
-        messageElement = document.getElementById('success-message');
+    uiContainer.innerHTML = `
+        <div id="player-info">
+            <div>プレイヤー: <span id="player-id">${myId}</span></div>
+            <div>役割: <span id="role">${myId === oniId ? '👹 鬼' : '🏃 逃走者'}</span></div>
+            <div>スコア: <span id="score">${gameState.score}</span></div>
+            <div id="red-items-count" style="display: ${myId !== oniId ? 'block' : 'none'}">
+                赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/8
+            </div>
+            <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
+                雪玉投擲可能！
+            </div>
+        </div>
+        <div id="timer-info" style="margin-top: 10px;">
+            <div>ゲーム時間: <span id="game-time">00:00</span></div>
+            <div id="oni-time" style="display: ${myId === oniId ? 'block' : 'none'}">
+                鬼時間: <span id="oni-duration">00:00</span>
+            </div>
+        </div>
+        <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
+            <div>W: 後退 | S: 前進 | A: 右移動 | D: 左移動 | Space: ジャンプ</div>
+            <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
+            <div>🔴赤いアイテム8個で雪玉投擲可能 🏢建物探索 🌀ワープホール</div>
+            <div id="owner-controls" style="display: ${playerRank === 'OWNER' ? 'block' : 'none'}; color: #ff6b6b;">
+                👑OWNER: F=飛行ON/OFF | Space=上昇 | Shift=下降
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(uiContainer);
+    createMinimap();
+}
+
+// ミニマップの作成
+function createMinimap() {
+    const minimapContainer = document.createElement('div');
+    minimapContainer.id = 'minimap';
+    minimapContainer.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 150px;
+        height: 150px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 2px solid #ffffff;
+        border-radius: 10px;
+        z-index: 1000;
+    `;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 146;
+    canvas.height = 146;
+    canvas.style.cssText = `
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        border-radius: 8px;
+    `;
+    
+    minimapContainer.appendChild(canvas);
+    document.body.appendChild(minimapContainer);
+    
+    gameState.minimapCanvas = canvas;
+    gameState.minimapCtx = canvas.getContext('2d');
+}
+
+// プレイヤーメッシュ
+function createPlayerMesh(id, data) {
+    const group = new THREE.Group();
+    
+    // 胴体
+    const bodyGeometry = new THREE.CapsuleGeometry(0.8, 1.6);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ 
+        color: id === oniId ? 0x0000ff : 0x00ff00,
+        roughness: 0.4,
+        metalness: 0.1
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.castShadow = true;
+    group.add(body);
+    group.bodyMesh = body;
+    
+    // 頭
+    const headGeometry = new THREE.SphereGeometry(0.5);
+    const headMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffdbac,
+        roughness: 0.6,
+        metalness: 0.0
+    });
+    const head = new THREE.Mesh(headGeometry, headMaterial);
+    head.position.y = 1.5;
+    head.castShadow = true;
+    group.add(head);
+    
+    group.position.set(data.x, data.y, data.z);
+    scene.add(group);
+    players[id] = group;
+    
+    if (id === oniId) {
+        addSword(group);
     }
     
-    if (messageElement) {
-        messageElement.textContent = text;
-        messageElement.style.display = 'block';
-        
-        setTimeout(() => {
-            messageElement.style.display = 'none';
-        }, duration);
-    } else {
-        console.log(text);
+    return group;
+}
+
+// プレイヤーの色を更新
+function updatePlayerColors() {
+    for (const id in players) {
+        const player = players[id];
+        if (player.bodyMesh) {
+            player.bodyMesh.material.color.setHex(id === oniId ? 0x0000ff : 0x00ff00);
+        }
+    }
+}
+
+// 剣を追加する関数（右下から持つように修正）
+function addSword(mesh) {
+    if (mesh.sword) return;
+    
+    const swordGroup = new THREE.Group();
+    
+    // 刃
+    const bladeGeometry = new THREE.BoxGeometry(0.1, 0.1, 1.5);
+    const bladeMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xc0c0c0,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+    blade.position.z = -0.75;
+    blade.castShadow = true;
+    swordGroup.add(blade);
+    
+    // 柄
+    const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.5);
+    const handleMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513,
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.z = 0.25;
+    handle.rotation.x = Math.PI / 2;
+    handle.castShadow = true;
+    swordGroup.add(handle);
+    
+    // 右下から持つ位置に変更
+    swordGroup.position.set(1.0, -1.2, -0.5); // 右下の位置
+    swordGroup.rotation.x = Math.PI / 4; // 斜め下向き
+    swordGroup.rotation.y = -Math.PI / 6; // 少し内側向き
+    
+    mesh.add(swordGroup);
+    mesh.sword = swordGroup;
+}
+
+function removeSword(mesh) {
+    if (mesh.sword) {
+        mesh.remove(mesh.sword);
+        mesh.sword = null;
     }
 }
