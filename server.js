@@ -1,21 +1,4 @@
-// 初期生成（サーバー起動時に確実に実行）
-console.log('サーバー起動時の赤いアイテム生成...');
-generateRedItems();
-
-// ワープホールの定期生成（30-90秒間隔）
-function scheduleNextWarpHoleGeneration() {
-    const interval = (Math.random() * 60 + 30) * 1000; // 30-90秒
-    setTimeout(() => {
-        generateWarpHoles();
-        scheduleNextWarpHoleGeneration(); // 次の生成をスケジュール
-    }, interval);
-}
-
-// 初回ワープホール生成（ゲーム開始から30秒後）
-setTimeout(() => {
-    generateWarpHoles();
-    scheduleNextWarpHoleGeneration();
-}, 30000);const express = require('express');
+const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
@@ -27,13 +10,11 @@ const wss = new WebSocket.Server({ server });
 let players = {};
 let redItems = {}; // 赤いアイテム（オーブの代替）
 let snowballs = {}; // 投げられた雪玉
-let warpHoles = {}; // ワープホール
 let playerRanks = {}; // プレイヤーのランク情報
 let oniId = null;
 const RED_ITEM_COUNT = 20; // 赤いアイテムの数
 let playerCounter = 0;
 let snowballCounter = 0;
-let warpHoleCounter = 0;
 
 // プレイヤーデータの検証関数
 function isValidPosition(x, y, z) {
@@ -48,58 +29,8 @@ app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
 
-// 建物内の位置リスト（ワープホール用）
-const buildingPositions = [
-    // 中央迷路内
-    { x: 5, z: 5 }, { x: -5, z: -5 }, { x: 0, z: 10 },
-    // 塔の周辺
-    { x: 55, z: 55 }, { x: -55, z: 55 }, { x: 55, z: -55 }, { x: -55, z: -55 },
-    // L字建物内
-    { x: 25, z: 0 }, { x: -25, z: 0 }, { x: 0, z: 25 }, { x: 0, z: -25 },
-    // 隠れ家周辺
-    { x: 40, z: 15 }, { x: -40, z: 15 }, { x: 40, z: -15 }, { x: -40, z: -15 },
-    { x: 15, z: 40 }, { x: -15, z: 40 }, { x: 15, z: -40 }, { x: -15, z: -40 }
-];
-
-// ワープホールの生成
-function generateWarpHoles() {
-    const warpHoleCount = Math.floor(Math.random() * 3) + 2; // 2-4個のワープホール
-    
-    for (let i = 0; i < warpHoleCount; i++) {
-        const warpHoleId = `warp_hole_${warpHoleCounter++}`;
-        const position = buildingPositions[Math.floor(Math.random() * buildingPositions.length)];
-        
-        warpHoles[warpHoleId] = {
-            id: warpHoleId,
-            x: position.x + (Math.random() - 0.5) * 4, // 少しランダムにずらす
-            y: 1.0,
-            z: position.z + (Math.random() - 0.5) * 4,
-            spawnTime: Date.now()
-        };
-        
-        // 全プレイヤーにワープホール出現を通知
-        broadcast({
-            type: 'warp_hole_spawned',
-            warpHoleId: warpHoleId,
-            warpHole: warpHoles[warpHoleId]
-        });
-        
-        console.log(`ワープホール出現: ${warpHoleId} at (${warpHoles[warpHoleId].x.toFixed(1)}, ${warpHoles[warpHoleId].y}, ${warpHoles[warpHoleId].z.toFixed(1)})`);
-        
-        // 30-60秒後にワープホールを消滅
-        const lifetime = (Math.random() * 30 + 30) * 1000; // 30-60秒
-        setTimeout(() => {
-            if (warpHoles[warpHoleId]) {
-                delete warpHoles[warpHoleId];
-                broadcast({
-                    type: 'warp_hole_despawned',
-                    warpHoleId: warpHoleId
-                });
-                console.log(`ワープホール消滅: ${warpHoleId}`);
-            }
-        }, lifetime);
-    }
-}
+// ブロック障害物の定義（削除済み）
+// const blockPositions = [];
 
 // サーバー側でのブロック衝突判定（削除済み）
 function isPositionInBlock(x, z, y = 1.7) {
@@ -376,7 +307,6 @@ wss.on('connection', (ws, req) => {
                         id: id, 
                         players: players, 
                         redItems: redItems,
-                        warpHoles: warpHoles,
                         oniId: oniId 
                     };
                     
@@ -421,45 +351,6 @@ wss.on('connection', (ws, req) => {
                         } else {
                             console.log(`不正な位置データを受信: ${id}`, data);
                         }
-                    }
-                    break;
-                    
-                case 'use_warp_hole':
-                    // ワープホール使用
-                    if (warpHoles[data.warpHoleId] && players[id]) {
-                        // ランダムな位置にワープ
-                        const warpTargets = [
-                            { x: 70, z: 70 }, { x: -70, z: 70 }, { x: 70, z: -70 }, { x: -70, z: -70 },
-                            { x: 50, z: 0 }, { x: -50, z: 0 }, { x: 0, z: 50 }, { x: 0, z: -50 },
-                            { x: 30, z: 30 }, { x: -30, z: 30 }, { x: 30, z: -30 }, { x: -30, z: -30 }
-                        ];
-                        
-                        const targetPos = warpTargets[Math.floor(Math.random() * warpTargets.length)];
-                        
-                        // プレイヤー位置を更新
-                        players[id].x = targetPos.x;
-                        players[id].y = 1.7;
-                        players[id].z = targetPos.z;
-                        
-                        // ワープ通知を送信
-                        sendToPlayer(id, {
-                            type: 'player_warped',
-                            playerId: id,
-                            newX: targetPos.x,
-                            newY: 1.7,
-                            newZ: targetPos.z
-                        });
-                        
-                        // 他のプレイヤーに位置更新を送信
-                        broadcast({
-                            type: 'player_update',
-                            id: id,
-                            x: players[id].x,
-                            y: players[id].y,
-                            z: players[id].z
-                        }, id);
-                        
-                        console.log(`プレイヤー ${id} がワープホール ${data.warpHoleId} を使用して (${targetPos.x}, 1.7, ${targetPos.z}) にワープしました`);
                     }
                     break;
                     
@@ -677,7 +568,6 @@ const statsInterval = setInterval(() => {
     console.log(`プレイヤー数: ${Object.keys(players).length}`);
     console.log(`赤いアイテム数: ${Object.keys(redItems).length}`);
     console.log(`雪玉数: ${Object.keys(snowballs).length}`);
-    console.log(`ワープホール数: ${Object.keys(warpHoles).length}`);
     console.log(`現在の鬼: ${oniId}`);
     console.log(`アクティブ接続数: ${wss.clients.size}`);
     console.log(`ランク付きプレイヤー数: ${Object.keys(playerRanks).length}`);
@@ -739,8 +629,7 @@ server.listen(port, () => {
     console.log(`🎯 赤いアイテム数: ${RED_ITEM_COUNT}`);
     console.log(`❄️ 雪玉システム有効`);
     console.log(`👑 ランクシステム有効`);
-    console.log(`🌀 ワープホールシステム有効`);
     console.log(`⚡ 移動速度: 0.7倍（56.0）`);
-    console.log(`🏗️ 鬼ごっこ用建物配置済み`);
+    console.log(`🏗️ 建物削除済み`);
     console.log(`=================================`);
 });
