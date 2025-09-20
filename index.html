@@ -230,8 +230,9 @@
         <div><strong>🎮 操作方法</strong></div>
         <div>WASD: 移動 | Space: ジャンプ | マウス: 視点移動</div>
         <div class="controls-hint">
-            🟢 オーブを集めてスコアアップ | ⚡ パワーアップで特殊能力獲得<br>
+            🔴 赤いアイテムを集めてスコアアップ | ❄️ 8個集めて雪玉で鬼を倒そう<br>
             👹 鬼は他のプレイヤーにタッチして役割交代<br>
+            🧱 色とりどりのブロックを使って隠れよう | 🚶‍♂️ 移動速度が少し遅くなりました<br>
             ⚙️ 右上のSettingsからタブレットモード切替可能
         </div>
     </div>
@@ -284,7 +285,7 @@
                 loadingScreen.style.display = 'none';
             }, 500);
             
-            // 5秒後に操作説明を非表示
+            // 8秒後に操作説明を非表示
             setTimeout(() => {
                 instructions.classList.remove('visible');
             }, 8000);

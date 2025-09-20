@@ -237,13 +237,9 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
-// 5階建て建物の作成
-function createBuildings() {
-    const buildings = [];
-    const BUILDING_WIDTH = 40;
-    const BUILDING_DEPTH = 40;
-    const FLOOR_HEIGHT = 15;
-    const WALL_THICKNESS = 2;
+// ブロック障害物の作成
+function createBlocks() {
+    const blocks = [];
     
     // 色のパレット
     const colors = [
@@ -257,110 +253,50 @@ function createBuildings() {
         0x5f27cd  // 紫
     ];
     
-    // 各階の建物を作成
-    for (let floor = 0; floor < 5; floor++) {
-        const y = FLOOR_HEIGHT * floor;
-        const floorGroup = new THREE.Group();
+    // ブロックの配置パターン
+    const blockPositions = [
+        // 中央の大きなブロック群
+        { x: 0, y: 5, z: 0, width: 8, height: 10, depth: 8 },
+        { x: 15, y: 3, z: 15, width: 6, height: 6, depth: 6 },
+        { x: -15, y: 4, z: -15, width: 5, height: 8, depth: 5 },
+        { x: 25, y: 2, z: -10, width: 4, height: 4, depth: 4 },
+        { x: -20, y: 6, z: 20, width: 7, height: 12, depth: 7 },
         
-        // 床の作成
-        if (floor > 0) {
-            const floorGeometry = new THREE.BoxGeometry(BUILDING_WIDTH, 1, BUILDING_DEPTH);
-            const floorMaterial = new THREE.MeshStandardMaterial({ 
-                color: colors[floor % colors.length],
-                opacity: 0.8,
-                transparent: true
-            });
-            const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
-            floorMesh.position.set(0, y - 1, 0);
-            floorMesh.receiveShadow = true;
-            floorMesh.castShadow = true;
-            floorGroup.add(floorMesh);
-        }
+        // 小さなブロック群
+        { x: 30, y: 1, z: 30, width: 3, height: 2, depth: 3 },
+        { x: -30, y: 2, z: -30, width: 3, height: 4, depth: 3 },
+        { x: 40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
+        { x: 0, y: 1, z: 40, width: 2, height: 2, depth: 2 },
+        { x: -40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
+        { x: 0, y: 1, z: -40, width: 2, height: 2, depth: 2 },
         
-        // 外壁の作成（中央は空洞）
-        const wallHeight = FLOOR_HEIGHT - 1;
-        const wallColor = colors[(floor + 2) % colors.length];
-        
-        // 北側の壁（3つに分割して中央に入口）
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue; // 1階の中央は入口
-            
-            const wallGeometry = new THREE.BoxGeometry(BUILDING_WIDTH / 3, wallHeight, WALL_THICKNESS);
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set((i - 1) * (BUILDING_WIDTH / 3), y + wallHeight / 2, -BUILDING_DEPTH / 2);
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 南側の壁
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue;
-            const wallGeometry = new THREE.BoxGeometry(BUILDING_WIDTH / 3, wallHeight, WALL_THICKNESS);
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set((i - 1) * (BUILDING_WIDTH / 3), y + wallHeight / 2, BUILDING_DEPTH / 2);
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 東側の壁
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue;
-            const wallGeometry = new THREE.BoxGeometry(WALL_THICKNESS, wallHeight, BUILDING_DEPTH / 3);
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set(BUILDING_WIDTH / 2, y + wallHeight / 2, (i - 1) * (BUILDING_DEPTH / 3));
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 西側の壁
-        for (let i = 0; i < 3; i++) {
-            if (i === 1 && floor === 0) continue;
-            const wallGeometry = new THREE.BoxGeometry(WALL_THICKNESS, wallHeight, BUILDING_DEPTH / 3);
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor });
-            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-            wall.position.set(-BUILDING_WIDTH / 2, y + wallHeight / 2, (i - 1) * (BUILDING_DEPTH / 3));
-            wall.receiveShadow = true;
-            wall.castShadow = true;
-            floorGroup.add(wall);
-        }
-        
-        // 階段の作成
-        if (floor < 4) {
-            const stairWidth = 8;
-            const stairDepth = 3;
-            const stairSteps = 10;
-            const stepHeight = FLOOR_HEIGHT / stairSteps;
-            
-            for (let step = 0; step < stairSteps; step++) {
-                const stepGeometry = new THREE.BoxGeometry(stairWidth, stepHeight, stairDepth);
-                const stepMaterial = new THREE.MeshStandardMaterial({ color: colors[(floor + 4) % colors.length] });
-                const stepMesh = new THREE.Mesh(stepGeometry, stepMaterial);
-                stepMesh.position.set(
-                    BUILDING_WIDTH / 2 - 5,
-                    y + (step + 0.5) * stepHeight,
-                    BUILDING_DEPTH / 2 - 5 - step * (stairDepth / 2)
-                );
-                stepMesh.receiveShadow = true;
-                stepMesh.castShadow = true;
-                floorGroup.add(stepMesh);
-            }
-        }
-        
-        scene.add(floorGroup);
-        buildings.push(floorGroup);
-    }
+        // ランダムなブロック
+        { x: 10, y: 2, z: -25, width: 3, height: 4, depth: 3 },
+        { x: -10, y: 3, z: 25, width: 4, height: 6, depth: 4 },
+        { x: 35, y: 1, z: -20, width: 2, height: 2, depth: 2 },
+        { x: -35, y: 2, z: 15, width: 3, height: 4, depth: 3 },
+    ];
     
-    console.log('5階建ての建物を作成しました');
-    return buildings;
+    blockPositions.forEach((pos, index) => {
+        const geometry = new THREE.BoxGeometry(pos.width, pos.height, pos.depth);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: colors[index % colors.length],
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        const block = new THREE.Mesh(geometry, material);
+        block.position.set(pos.x, pos.y, pos.z);
+        block.receiveShadow = true;
+        block.castShadow = true;
+        scene.add(block);
+        blocks.push(block);
+    });
+    
+    console.log('ブロック障害物を作成しました:', blocks.length + '個');
+    return blocks;
 }
 
-// 外周の壁と建物の作成
+// 外周の壁と障害物の作成
 const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
 const wallMaterial = new THREE.MeshStandardMaterial({ 
@@ -370,6 +306,7 @@ const wallMaterial = new THREE.MeshStandardMaterial({
 });
 
 const walls = [];
+const blocks = []; // ブロック衝突判定用
 
 // 外周の壁
 const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
@@ -400,8 +337,9 @@ wall4.castShadow = true;
 scene.add(wall4);
 walls.push(wall4);
 
-// 5階建ての建物を作成
-const buildings = createBuildings();
+// ブロック障害物を作成
+const gameBlocks = createBlocks();
+blocks.push(...gameBlocks);
 
 // UIエレメントの作成
 function createUI() {
@@ -444,7 +382,7 @@ function createUI() {
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
             <div>W: 後退 | S: 前進 | A: 右移動 | D: 左移動 | Space: ジャンプ</div>
             <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
-            <div>🔴赤いアイテム8個で雪玉投擲可能 🏢建物探索</div>
+            <div>🔴赤いアイテム8個で雪玉投擲可能 🧱ブロック探索</div>
         </div>
     `;
     
@@ -582,7 +520,7 @@ function removeSword(mesh) {
     }
 }
 
-// 🚨修正: 赤いアイテムメッシュの作成（再出現対応）
+// 赤いアイテムメッシュの作成（再出現対応）
 function createRedItemMesh(id, data) {
     console.log(`赤いアイテムメッシュ作成: ${id}`, data);
     
@@ -1347,16 +1285,61 @@ function updateMinimap() {
         ctx.fill();
     }
     
-    // 建物の表示
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 1;
-    const buildingSize = 40 * scale;
-    ctx.strokeRect(
-        centerX - buildingSize/2, 
-        centerY - buildingSize/2, 
-        buildingSize, 
-        buildingSize
-    );
+    // ブロックの表示
+    ctx.fillStyle = '#888888';
+    blocks.forEach(block => {
+        const blockX = centerX + block.position.x * scale;
+        const blockZ = centerY + block.position.z * scale;
+        const size = 3;
+        ctx.fillRect(blockX - size/2, blockZ - size/2, size, size);
+    });
+}
+
+// ブロックとの衝突判定
+function checkBlockCollision(playerPos, playerRadius) {
+    for (const block of blocks) {
+        const blockPos = block.position;
+        const blockSize = block.geometry.parameters;
+        
+        // AABB衝突判定
+        const blockHalfWidth = blockSize.width / 2;
+        const blockHalfDepth = blockSize.depth / 2;
+        const blockHeight = blockSize.height;
+        
+        // プレイヤーがブロックの高さ範囲内にいるかチェック
+        if (playerPos.y + 1.7 > blockPos.y && playerPos.y < blockPos.y + blockHeight) {
+            // X軸とZ軸での衝突判定
+            if (Math.abs(playerPos.x - blockPos.x) < blockHalfWidth + playerRadius &&
+                Math.abs(playerPos.z - blockPos.z) < blockHalfDepth + playerRadius) {
+                
+                // 衝突した場合、押し戻す方向を計算
+                const deltaX = playerPos.x - blockPos.x;
+                const deltaZ = playerPos.z - blockPos.z;
+                
+                // より大きな軸で押し戻し
+                if (Math.abs(deltaX) > Math.abs(deltaZ)) {
+                    // X軸方向に押し戻し
+                    if (deltaX > 0) {
+                        playerPos.x = blockPos.x + blockHalfWidth + playerRadius + 0.1;
+                    } else {
+                        playerPos.x = blockPos.x - blockHalfWidth - playerRadius - 0.1;
+                    }
+                    velocity.x *= -0.5; // 反発
+                } else {
+                    // Z軸方向に押し戻し
+                    if (deltaZ > 0) {
+                        playerPos.z = blockPos.z + blockHalfDepth + playerRadius + 0.1;
+                    } else {
+                        playerPos.z = blockPos.z - blockHalfDepth - playerRadius - 0.1;
+                    }
+                    velocity.z *= -0.5; // 反発
+                }
+                
+                return true; // 衝突があった
+            }
+        }
+    }
+    return false; // 衝突なし
 }
 
 // アニメーションループ
@@ -1400,8 +1383,8 @@ function animate() {
         inputZ /= inputLength;
     }
 
-    // 移動速度の適用（減速）
-    const moveSpeed = 80.0; // 遅い移動速度
+    // 移動速度の適用（0.7倍に減速）
+    const moveSpeed = 56.0; // 80.0 * 0.7 = 56.0 (0.7倍に減速)
     velocity.z -= inputZ * moveSpeed * delta;
     velocity.x -= inputX * moveSpeed * delta;
     
@@ -1410,66 +1393,28 @@ function animate() {
     controls.moveForward(velocity.z * delta);
     controls.getObject().position.y += velocity.y * delta;
     
-    // 壁との衝突判定（白い壁のような性質）
+    // 安全境界での衝突判定（ソフトな押し戻し）
     const playerRadius = 1.0;
     const playerPos = controls.getObject().position;
-    const prevPosition = controls.getObject().position.clone();
+    const safetyMargin = 8; // 壁から8ユニット離れた安全境界
+    const pushForce = 0.05; // 非常に弱い押し戻し力
     
-    // 外周の壁との衝突判定（白い壁のような押し戻し）
-    let hitWall = false;
-    
-    if (playerPos.x - playerRadius < -WALL_SIZE/2 + 1) {
-        playerPos.x = -WALL_SIZE/2 + 1 + playerRadius;
-        velocity.x = 0;
-        hitWall = true;
+    // 外周の安全境界チェック
+    if (playerPos.x < -WALL_SIZE/2 + safetyMargin) {
+        velocity.x += pushForce;
     }
-    if (playerPos.x + playerRadius > WALL_SIZE/2 - 1) {
-        playerPos.x = WALL_SIZE/2 - 1 - playerRadius;
-        velocity.x = 0;
-        hitWall = true;
+    if (playerPos.x > WALL_SIZE/2 - safetyMargin) {
+        velocity.x -= pushForce;
     }
-    if (playerPos.z - playerRadius < -WALL_SIZE/2 + 1) {
-        playerPos.z = -WALL_SIZE/2 + 1 + playerRadius;
-        velocity.z = 0;
-        hitWall = true;
+    if (playerPos.z < -WALL_SIZE/2 + safetyMargin) {
+        velocity.z += pushForce;
     }
-    if (playerPos.z + playerRadius > WALL_SIZE/2 - 1) {
-        playerPos.z = WALL_SIZE/2 - 1 - playerRadius;
-        velocity.z = 0;
-        hitWall = true;
+    if (playerPos.z > WALL_SIZE/2 - safetyMargin) {
+        velocity.z -= pushForce;
     }
     
-    // 建物との衝突判定（白い壁のような性質）
-    const BUILDING_SIZE = 20;
-    const buildingDistance = Math.sqrt(playerPos.x * playerPos.x + playerPos.z * playerPos.z);
-    
-    if (buildingDistance > BUILDING_SIZE - playerRadius && 
-        buildingDistance < BUILDING_SIZE + 5 + playerRadius && 
-        playerPos.y < 15) {
-        
-        // 入口の判定
-        const isNorthEntrance = Math.abs(playerPos.x) < 6 && playerPos.z < -BUILDING_SIZE + 2;
-        const isSouthEntrance = Math.abs(playerPos.x) < 6 && playerPos.z > BUILDING_SIZE - 2;
-        const isEastEntrance = playerPos.x > BUILDING_SIZE - 2 && Math.abs(playerPos.z) < 6;
-        const isWestEntrance = playerPos.x < -BUILDING_SIZE + 2 && Math.abs(playerPos.z) < 6;
-        
-        if (!isNorthEntrance && !isSouthEntrance && !isEastEntrance && !isWestEntrance) {
-            // 白い壁のような押し戻し
-            const pushBackDistance = BUILDING_SIZE + playerRadius + 0.5;
-            const angle = Math.atan2(playerPos.z, playerPos.x);
-            playerPos.x = Math.cos(angle) * pushBackDistance;
-            playerPos.z = Math.sin(angle) * pushBackDistance;
-            velocity.x = 0;
-            velocity.z = 0;
-            hitWall = true;
-        }
-    }
-    
-    // 壁に触れた時の追加処理（完全停止）
-    if (hitWall) {
-        velocity.x = 0;
-        velocity.z = 0;
-    }
+    // ブロックとの衝突判定
+    checkBlockCollision(playerPos, playerRadius);
     
     // 地面との衝突判定
     if (controls.getObject().position.y < 1.7) {
@@ -1478,17 +1423,17 @@ function animate() {
         canJump = true;
     }
 
-    // 🚨修正: 赤いアイテムとの衝突判定（強化版）
+    // 赤いアイテムとの衝突判定
     for (const id in redItems) {
         const item = redItems[id];
         const distance = controls.getObject().position.distanceTo(item.position);
-        if (distance < 2.0) { // 判定範囲を大幅拡大
+        if (distance < 2.0) {
             console.log(`赤いアイテム ${id} に接触！距離: ${distance.toFixed(2)}`);
             ws.send(JSON.stringify({ type: 'collect_red_item', itemId: id }));
         }
     }
 
-    // 🚨修正: 赤いアイテムの回転アニメーション（超目立つ）
+    // 赤いアイテムの回転アニメーション
     for (const id in redItems) {
         redItems[id].rotation.y += delta * 6; // 超高速回転
         redItems[id].rotation.x += delta * 4; 
@@ -1521,7 +1466,7 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 🚨修正: 鬼ごっこの判定（確実な鬼交代システム）
+// 鬼ごっこの判定（確実な鬼交代システム）
 setInterval(() => {
     if (!isConnected) return;
     

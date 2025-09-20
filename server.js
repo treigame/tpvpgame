@@ -28,6 +28,69 @@ app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
 
+// ブロック障害物の定義（クライアントと同期）
+const blockPositions = [
+    // 中央の大きなブロック群
+    { x: 0, y: 5, z: 0, width: 8, height: 10, depth: 8 },
+    { x: 15, y: 3, z: 15, width: 6, height: 6, depth: 6 },
+    { x: -15, y: 4, z: -15, width: 5, height: 8, depth: 5 },
+    { x: 25, y: 2, z: -10, width: 4, height: 4, depth: 4 },
+    { x: -20, y: 6, z: 20, width: 7, height: 12, depth: 7 },
+    
+    // 小さなブロック群
+    { x: 30, y: 1, z: 30, width: 3, height: 2, depth: 3 },
+    { x: -30, y: 2, z: -30, width: 3, height: 4, depth: 3 },
+    { x: 40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
+    { x: 0, y: 1, z: 40, width: 2, height: 2, depth: 2 },
+    { x: -40, y: 1, z: 0, width: 2, height: 2, depth: 2 },
+    { x: 0, y: 1, z: -40, width: 2, height: 2, depth: 2 },
+    
+    // ランダムなブロック
+    { x: 10, y: 2, z: -25, width: 3, height: 4, depth: 3 },
+    { x: -10, y: 3, z: 25, width: 4, height: 6, depth: 4 },
+    { x: 35, y: 1, z: -20, width: 2, height: 2, depth: 2 },
+    { x: -35, y: 2, z: 15, width: 3, height: 4, depth: 3 },
+];
+
+// サーバー側でのブロック衝突判定
+function isPositionInBlock(x, z, y = 1.7) {
+    for (const block of blockPositions) {
+        const halfWidth = block.width / 2;
+        const halfDepth = block.depth / 2;
+        
+        // プレイヤーがブロックの高さ範囲内にいるかチェック
+        if (y + 1.7 > block.y && y < block.y + block.height) {
+            // X軸とZ軸での衝突判定
+            if (Math.abs(x - block.x) < halfWidth + 1.0 &&
+                Math.abs(z - block.z) < halfDepth + 1.0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// ブロックを避けて安全な位置を生成
+function generateSafePosition() {
+    let x, z;
+    let attempts = 0;
+    const maxAttempts = 100;
+    
+    do {
+        x = (Math.random() - 0.5) * 150;
+        z = (Math.random() - 0.5) * 150;
+        attempts++;
+    } while (isPositionInBlock(x, z) && attempts < maxAttempts);
+    
+    // 最大試行回数に達した場合はフォールバック位置
+    if (attempts >= maxAttempts) {
+        x = 0;
+        z = 50;
+    }
+    
+    return { x, z };
+}
+
 // ブロードキャスト関数
 function broadcast(message, excludeId = null) {
     const jsonMessage = JSON.stringify(message);
@@ -55,25 +118,23 @@ function sendToPlayer(playerId, message) {
     });
 }
 
-// 赤いアイテム生成関数（シンプル版）
+// 赤いアイテム生成関数（ブロックを避ける）
 function generateRedItems() {
     redItems = {};
     console.log('赤いアイテム強制生成開始...');
     
-    // シンプルに必ず生成する
     for (let i = 0; i < RED_ITEM_COUNT; i++) {
         const itemId = `red_item_${i}`;
-        const x = (Math.random() - 0.5) * 150; // より広範囲
-        const z = (Math.random() - 0.5) * 150;
+        const position = generateSafePosition();
         
         redItems[itemId] = {
             id: itemId,
-            x: x,
-            y: 2.0, // より高い位置
-            z: z,
+            x: position.x,
+            y: 2.0,
+            z: position.z,
         };
         
-        console.log(`強制生成: ${itemId} at (${x.toFixed(1)}, 2.0, ${z.toFixed(1)})`);
+        console.log(`強制生成: ${itemId} at (${position.x.toFixed(1)}, 2.0, ${position.z.toFixed(1)})`);
     }
     
     console.log(`赤いアイテム強制生成完了: ${Object.keys(redItems).length}個`);
@@ -106,11 +167,22 @@ function respawnItemAtPosition(originalId, position) {
     // 新しいIDで再生成
     const newItemId = `respawn_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
+    // 元の位置から少しずらして配置（ブロック衝突を考慮）
+    let newX = position.x + (Math.random() - 0.5) * 4;
+    let newZ = position.z + (Math.random() - 0.5) * 4;
+    
+    // ブロックとの衝突を確認し、必要に応じて安全な位置を生成
+    if (isPositionInBlock(newX, newZ)) {
+        const safePos = generateSafePosition();
+        newX = safePos.x;
+        newZ = safePos.z;
+    }
+    
     redItems[newItemId] = {
         id: newItemId,
-        x: position.x + (Math.random() - 0.5) * 4, // 少しランダムにずらす
+        x: newX,
         y: position.y,
-        z: position.z + (Math.random() - 0.5) * 4,
+        z: newZ,
     };
     
     // 全プレイヤーに新しいアイテム出現を通知
@@ -134,11 +206,12 @@ if (Object.keys(redItems).length === 0) {
     console.log('緊急: 赤いアイテムが0個なので強制生成します');
     for (let i = 0; i < RED_ITEM_COUNT; i++) {
         const itemId = `red_item_${i}`;
+        const position = generateSafePosition();
         redItems[itemId] = {
             id: itemId,
-            x: (Math.random() - 0.5) * 100,
+            x: position.x,
             y: 1.0,
-            z: (Math.random() - 0.5) * 100,
+            z: position.z,
         };
     }
     console.log(`強制生成完了: ${Object.keys(redItems).length}個`);
@@ -230,23 +303,34 @@ function resetGame() {
     });
 }
 
+// プレイヤーの安全な初期位置生成
+function generateSafeSpawnPosition() {
+    const position = generateSafePosition();
+    return {
+        x: position.x,
+        y: 1.7,
+        z: position.z
+    };
+}
+
 // WebSocket接続処理
 wss.on('connection', (ws, req) => {
     const id = `player_${playerCounter++}`;
     const clientIP = req.socket.remoteAddress;
     
-    // プレイヤーの初期化
+    // プレイヤーの初期化（ブロックを避けた安全な位置に配置）
+    const spawnPos = generateSafeSpawnPosition();
     players[id] = { 
         id: id, 
-        x: Math.random() * 20 - 10,
-        y: 1.7, 
-        z: Math.random() * 20 - 10,
+        x: spawnPos.x,
+        y: spawnPos.y, 
+        z: spawnPos.z,
         lastUpdate: Date.now(),
         score: 0
     };
     
     ws.playerId = id;
-    console.log(`新しいプレイヤーが接続しました: ${id} (IP: ${clientIP})`);
+    console.log(`新しいプレイヤーが接続しました: ${id} (IP: ${clientIP}) at (${spawnPos.x.toFixed(1)}, ${spawnPos.y}, ${spawnPos.z.toFixed(1)})`);
     
     // 最初のプレイヤーまたは鬼が不在の場合、鬼に設定
     if (!oniId || Object.keys(players).length === 1) {
@@ -296,8 +380,8 @@ wss.on('connection', (ws, req) => {
                     
                     const player = players[data.id];
                     if (player && data.id === id) {
-                        // 位置データの検証
-                        if (isValidPosition(data.x, data.y, data.z)) {
+                        // 位置データの検証（ブロック衝突チェック含む）
+                        if (isValidPosition(data.x, data.y, data.z) && !isPositionInBlock(data.x, data.z, data.y)) {
                             player.x = parseFloat(data.x);
                             player.y = parseFloat(data.y);
                             player.z = parseFloat(data.z);
@@ -312,7 +396,7 @@ wss.on('connection', (ws, req) => {
                                 z: player.z 
                             }, id);
                         } else {
-                            console.log(`不正な位置データを受信: ${id}`, data);
+                            console.log(`不正な位置データを受信（ブロック衝突含む）: ${id}`, data);
                         }
                     }
                     break;
@@ -516,6 +600,7 @@ const statsInterval = setInterval(() => {
     console.log(`雪玉数: ${Object.keys(snowballs).length}`);
     console.log(`現在の鬼: ${oniId}`);
     console.log(`アクティブ接続数: ${wss.clients.size}`);
+    console.log(`ブロック数: ${blockPositions.length}`);
     
     // プレイヤースコアランキング
     const sortedPlayers = Object.values(players)
@@ -572,5 +657,7 @@ server.listen(port, () => {
     console.log(`🌐 URL: http://localhost:${port}`);
     console.log(`🎯 赤いアイテム数: ${RED_ITEM_COUNT}`);
     console.log(`❄️ 雪玉システム有効`);
+    console.log(`🧱 ブロック障害物: ${blockPositions.length}個`);
+    console.log(`⚡ 移動速度: 0.7倍（56.0）`);
     console.log(`=================================`);
 });
