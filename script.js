@@ -12,6 +12,11 @@ let isConnected = false;
 let canThrowSnowball = false; // 雪玉を投げられるかどうか
 let showExclamation = false; // ！マークを表示するかどうか
 
+// OWNER特権とフライトシステム
+let playerRank = null; // プレイヤーのランク
+let isFlying = false; // フライト状態
+let flightEnabled = false; // フライトが有効か
+
 // ゲーム状態の管理
 let gameState = {
     score: 0,
@@ -28,7 +33,6 @@ let gameState = {
 let isTabletMode = false;
 let joystickActive = false;
 let joystickPosition = { x: 0, y: 0 };
-let playerRank = null; // プレイヤーのランク
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました。');
@@ -247,16 +251,11 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
-// 建物を削除（空の関数）
-function createBlocks() {
-    const blocks = [];
-    console.log('建物は削除されました');
-    return blocks;
-}
-
 // 外周の壁と障害物の作成
 const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
+const WALL_THICKNESS = 4; // 壁の厚さを4ユニットに増加（貫通防止）
+
 const wallMaterial = new THREE.MeshStandardMaterial({ 
     color: 0xffffff,
     roughness: 0.3,
@@ -264,40 +263,193 @@ const wallMaterial = new THREE.MeshStandardMaterial({
 });
 
 const walls = [];
-const blocks = []; // ブロック衝突判定用
+const blocks = []; // ブロック衝突判定用（壁も含む）
 
-// 外周の壁
-const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
+// 外周の壁（厚くして貫通を防ぐ）
+const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, WALL_THICKNESS), wallMaterial);
 wall1.position.set(0, (WALL_HEIGHT / 2) - 1, -WALL_SIZE / 2);
 wall1.receiveShadow = true;
 wall1.castShadow = true;
 scene.add(wall1);
 walls.push(wall1);
+blocks.push(wall1); // 衝突判定に追加
 
-const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, 2), wallMaterial);
+const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, WALL_THICKNESS), wallMaterial);
 wall2.position.set(0, (WALL_HEIGHT / 2) - 1, WALL_SIZE / 2);
 wall2.receiveShadow = true;
 wall2.castShadow = true;
 scene.add(wall2);
 walls.push(wall2);
+blocks.push(wall2); // 衝突判定に追加
 
-const wall3 = new THREE.Mesh(new THREE.BoxGeometry(2, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+const wall3 = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_SIZE), wallMaterial);
 wall3.position.set(-WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
 wall3.receiveShadow = true;
 wall3.castShadow = true;
 scene.add(wall3);
 walls.push(wall3);
+blocks.push(wall3); // 衝突判定に追加
 
-const wall4 = new THREE.Mesh(new THREE.BoxGeometry(2, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+const wall4 = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_SIZE), wallMaterial);
 wall4.position.set(WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
 wall4.receiveShadow = true;
 wall4.castShadow = true;
 scene.add(wall4);
 walls.push(wall4);
+blocks.push(wall4); // 衝突判定に追加
 
-// ブロック障害物を作成
-const gameBlocks = createBlocks();
-blocks.push(...gameBlocks);
+// あなたが作成したカスタム建物
+function createCustomBuildings() {
+    // MyBuilding_1
+    const mybuilding_1Material = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    const mybuilding_1 = new THREE.Mesh(
+        new THREE.BoxGeometry(10, 8, 10), 
+        mybuilding_1Material
+    );
+    mybuilding_1.position.set(0, 3, 0);
+    mybuilding_1.castShadow = true;
+    mybuilding_1.receiveShadow = true;
+    scene.add(mybuilding_1);
+    blocks.push(mybuilding_1);
+
+    // Tower_2
+    const tower_2Material = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    const tower_2Group = new THREE.Group();
+    const sections = [
+        new THREE.Mesh(new THREE.BoxGeometry(10, 3.2, 10), tower_2Material),
+        new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 7), tower_2Material),
+        new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 5), tower_2Material)
+    ];
+    sections[0].position.y = -2.4;
+    sections[1].position.y = 0;
+    sections[2].position.y = 2.4;
+    sections.forEach(section => {
+        section.castShadow = true;
+        section.receiveShadow = true;
+        tower_2Group.add(section);
+        blocks.push(section);
+    });
+    tower_2Group.position.set(30, 3, 30);
+    scene.add(tower_2Group);
+
+    // Tower_3
+    const tower_3Material = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    const tower_3Group = new THREE.Group();
+    const sections3 = [
+        new THREE.Mesh(new THREE.BoxGeometry(10, 3.2, 10), tower_3Material),
+        new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 7), tower_3Material),
+        new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 5), tower_3Material)
+    ];
+    sections3[0].position.y = -2.4;
+    sections3[1].position.y = 0;
+    sections3[2].position.y = 2.4;
+    sections3.forEach(section => {
+        section.castShadow = true;
+        section.receiveShadow = true;
+        tower_3Group.add(section);
+        blocks.push(section);
+    });
+    tower_3Group.position.set(10, 3, 5);
+    scene.add(tower_3Group);
+
+    // Tower_4 (Hollow)
+    const tower_4Material = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    const tower_4Group = new THREE.Group();
+    // Walls
+    const walls4 = [
+        new THREE.Mesh(new THREE.BoxGeometry(10, 8, 0.5), tower_4Material),
+        new THREE.Mesh(new THREE.BoxGeometry(10, 8, 0.5), tower_4Material),
+        new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), tower_4Material),
+        new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), tower_4Material)
+    ];
+    walls4[0].position.set(0, 0, 4.75);
+    walls4[1].position.set(0, 0, -4.75);
+    walls4[2].position.set(4.75, 0, 0);
+    walls4[3].position.set(-4.75, 0, 0);
+    walls4.forEach(wall => {
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        tower_4Group.add(wall);
+        blocks.push(wall);
+    });
+    tower_4Group.position.set(-15, 3, 5);
+    scene.add(tower_4Group);
+
+    // 残りの建物を追加
+    const buildingData = [
+        { name: 'tower_5', pos: [-15, 3, -20], color: 0x8B4513 },
+        { name: 'tower_6', pos: [5, 3, -20], color: 0x8B4513 },
+        { name: 'tower_7', pos: [-80, 3, -60], color: 0x8B4513 },
+        { name: 'tower_8', pos: [-10, 3, -65], color: 0x8B4513 },
+        { name: 'tower_9', pos: [-45, 3, -10], color: 0x8B4513 },
+        { name: 'tower_10', pos: [-35, 3, 35], color: 0x8B4513 },
+        { name: 'tower_11', pos: [20, 3, 35], color: 0x8B4513 },
+        { name: 'tower_12', pos: [50, 3, -20], color: 0xFECE57 }, // 黄色
+        { name: 'mybuilding_13', pos: [0, 3, 15], color: 0x8B4513 },
+        { name: 'mybuilding_14', pos: [-5, 3, -10], color: 0x8B4513 },
+        { name: 'mybuilding_15', pos: [-15, 3, -5], color: 0x8B4513 },
+        { name: 'mybuilding_16', pos: [-10, 3, 20], color: 0x8B4513 },
+        { name: 'mybuilding_17', pos: [-5, 3, 40], color: 0x8B4513 },
+        { name: 'mybuilding_18', pos: [-20, 3, 35], color: 0x8B4513 },
+        { name: 'mybuilding_19', pos: [-25, 3, 20], color: 0x8B4513 },
+        { name: 'mybuilding_20', pos: [-30, 3, -5], color: 0x8B4513 },
+        { name: 'mybuilding_21', pos: [-30, 3, 5], color: 0x8B4513 },
+        { name: 'mybuilding_22', pos: [-5, 3, 5], color: 0x8B4513 },
+        { name: 'mybuilding_23', pos: [-5, 3, 0], color: 0x8B4513 },
+        { name: 'mybuilding_24', pos: [-20, 3, 15], color: 0x8B4513 },
+        { name: 'mybuilding_25', pos: [5, 3, 20], color: 0x8B4513 },
+        { name: 'mybuilding_26', pos: [0, 3, 25], color: 0x8B4513 },
+        { name: 'mybuilding_27', pos: [15, 3, 30], color: 0x8B4513 },
+        { name: 'mybuilding_28', pos: [15, 3, 15], color: 0x8B4513 },
+        { name: 'mybuilding_29', pos: [25, 3, 0], color: 0x8B4513 },
+        { name: 'mybuilding_30', pos: [75, 3, 20], color: 0x8B4513 },
+        { name: 'mybuilding_31', pos: [70, 3, 55], color: 0x8B4513 },
+        { name: 'mybuilding_32', pos: [40, 3, 60], color: 0x8B4513 },
+        { name: 'mybuilding_33', pos: [-5, 3, 65], color: 0x8B4513 },
+        { name: 'mybuilding_34', pos: [-35, 3, 60], color: 0x8B4513 },
+        { name: 'mybuilding_35', pos: [-65, 3, 45], color: 0x8B4513 },
+        { name: 'mybuilding_36', pos: [-70, 3, 20], color: 0x8B4513 },
+        { name: 'mybuilding_37', pos: [-70, 3, -15], color: 0x8B4513 },
+        { name: 'mybuilding_42', pos: [-45, 3, 80], color: 0x8B4513 },
+        { name: 'mybuilding_43', pos: [-75, 3, 75], color: 0x8B4513 }
+    ];
+
+    buildingData.forEach(building => {
+        const material = new THREE.MeshStandardMaterial({ 
+            color: building.color,
+            roughness: 0.3,
+            metalness: 0.1
+        });
+        
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), material);
+        mesh.position.set(...building.pos);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        blocks.push(mesh);
+    });
+
+    console.log('Custom buildings created: 43 buildings');
+}
+
+// カスタム建物を作成
+createCustomBuildings();
 
 // UIエレメントの作成
 function createUI() {
@@ -330,6 +482,9 @@ function createUI() {
             <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
                 雪玉投擲可能！
             </div>
+            <div id="owner-status" style="display: none; color: #gold;">
+                OWNER: <span id="flight-status">フライト無効</span>
+            </div>
         </div>
         <div id="timer-info" style="margin-top: 10px;">
             <div>ゲーム時間: <span id="game-time">00:00</span></div>
@@ -340,7 +495,10 @@ function createUI() {
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
             <div>W: 後退 | S: 前進 | A: 右移動 | D: 左移動 | Space: ジャンプ</div>
             <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
-            <div>🔴赤いアイテム8個で雪玉投擲可能 🧱ブロック探索</div>
+            <div id="owner-controls" style="display: none; color: #gold;">
+                F: フライト切替 | Space: 上昇 | Shift: 下降
+            </div>
+            <div>🔴赤いアイテム8個で雪玉投擲可能 🧱建物探索</div>
         </div>
     `;
     
@@ -430,7 +588,7 @@ function updatePlayerColors() {
     }
 }
 
-// 剣を追加する関数（右下から持つように修正）
+// 剣を追加する関数
 function addSword(mesh) {
     if (mesh.sword) return;
     
@@ -462,9 +620,9 @@ function addSword(mesh) {
     swordGroup.add(handle);
     
     // 右下から持つ位置に変更
-    swordGroup.position.set(1.0, -1.2, -0.5); // 右下の位置
-    swordGroup.rotation.x = Math.PI / 4; // 斜め下向き
-    swordGroup.rotation.y = -Math.PI / 6; // 少し内側向き
+    swordGroup.position.set(1.0, -1.2, -0.5);
+    swordGroup.rotation.x = Math.PI / 4;
+    swordGroup.rotation.y = -Math.PI / 6;
     
     mesh.add(swordGroup);
     mesh.sword = swordGroup;
@@ -540,7 +698,7 @@ function removeRankDisplay(mesh) {
     }
 }
 
-// 赤いアイテムメッシュの作成（再出現対応）
+// 赤いアイテムメッシュの作成
 function createRedItemMesh(id, data) {
     console.log(`赤いアイテムメッシュ作成: ${id}`, data);
     
@@ -570,7 +728,7 @@ function createRedItemMesh(id, data) {
     const startTime = Date.now();
     function appearEffect() {
         const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / 1000, 1); // 1秒で出現
+        const progress = Math.min(elapsed / 1000, 1);
         
         const scale = 0.1 + (progress * 0.9);
         mesh.scale.set(scale, scale, scale);
@@ -590,7 +748,7 @@ function createRedItemMesh(id, data) {
 function createSnowballMesh(id, data) {
     const geometry = new THREE.SphereGeometry(0.3, 8, 8);
     const material = new THREE.MeshStandardMaterial({ 
-        color: 0x8a2be2, // 紫色
+        color: 0x8a2be2,
         roughness: 0.8,
         metalness: 0.1
     });
@@ -635,7 +793,7 @@ function animateSnowball(mesh, data) {
     animate();
 }
 
-// ！マークの表示
+// 感嘆符マークの表示
 function showExclamationMark() {
     const exclamationElement = document.getElementById('exclamation-mark');
     if (exclamationElement) {
@@ -680,7 +838,7 @@ function showExclamationMark() {
     }
 }
 
-// ！マークの非表示
+// 感嘆符マークの非表示
 function hideExclamationMark() {
     const exclamationElement = document.getElementById('exclamation-mark');
     if (exclamationElement) {
@@ -880,12 +1038,17 @@ function createSettingsUI() {
         
         if (code === 'trei0516') {
             playerRank = 'OWNER';
-            showMessage('OWNERランクが付与されました！', 'success', 3000);
+            flightEnabled = true;
+            showMessage('OWNERランクが付与されました！Fキーでフライト切替', 'success', 3000);
+            
+            // OWNER UIを表示
+            const ownerStatus = document.getElementById('owner-status');
+            const ownerControls = document.getElementById('owner-controls');
+            if (ownerStatus) ownerStatus.style.display = 'block';
+            if (ownerControls) ownerControls.style.display = 'block';
             
             // 自分にランク表示を追加
-            if (myId && camera) {
-                addRankDisplay(camera, 'OWNER');
-            }
+            addRankDisplay(camera, 'OWNER');
             
             // サーバーにランク情報を送信
             ws.send(JSON.stringify({
@@ -919,6 +1082,8 @@ function setupJoystickControls() {
     const knob = document.getElementById('joystick-knob');
     const jumpButton = document.getElementById('jump-button');
     
+    if (!container || !knob || !jumpButton) return;
+    
     let isDragging = false;
     let startPos = { x: 0, y: 0 };
     
@@ -951,16 +1116,16 @@ function setupJoystickControls() {
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         
         if (distance <= maxDistance) {
-            joystickPosition.x = -deltaX / maxDistance; // X軸反転
-            joystickPosition.y = -deltaY / maxDistance; // Y軸反転
+            joystickPosition.x = -deltaX / maxDistance;
+            joystickPosition.y = -deltaY / maxDistance;
             knob.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
         } else {
             const angle = Math.atan2(deltaY, deltaX);
             const clampedX = Math.cos(angle) * maxDistance;
             const clampedY = Math.sin(angle) * maxDistance;
             
-            joystickPosition.x = -clampedX / maxDistance; // X軸反転
-            joystickPosition.y = -clampedY / maxDistance; // Y軸反転
+            joystickPosition.x = -clampedX / maxDistance;
+            joystickPosition.y = -clampedY / maxDistance;
             knob.style.transform = `translate(calc(-50% + ${clampedX}px), calc(-50% + ${clampedY}px))`;
         }
         
@@ -986,8 +1151,8 @@ function setupJoystickControls() {
     
     // ジャンプボタン
     function jump() {
-        if (canJump) {
-            velocity.y += 18; // ジャンプ力を増加
+        if (canJump || (flightEnabled && isFlying)) {
+            velocity.y += 18;
             canJump = false;
         }
     }
@@ -997,70 +1162,6 @@ function setupJoystickControls() {
         event.preventDefault();
         jump();
     });
-    
-    // タブレットモード用の視点操作
-    setupTouchLookControls();
-}
-
-// タッチによる視点操作の設定
-function setupTouchLookControls() {
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let isLooking = false;
-    
-    function handleTouchStart(event) {
-        if (!isTabletMode) return;
-        
-        // ジョイスティックとジャンプボタンの範囲外でのみ視点操作
-        const touch = event.touches[0];
-        const joystickContainer = document.getElementById('joystick-container');
-        const jumpButton = document.getElementById('jump-button');
-        
-        // タッチがコントロール要素上でないかチェック
-        const touchedElement = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (joystickContainer && joystickContainer.contains(touchedElement)) return;
-        if (jumpButton && jumpButton.contains(touchedElement)) return;
-        
-        touchStartX = touch.clientX;
-        touchStartY = touch.clientY;
-        isLooking = true;
-        
-        event.preventDefault();
-    }
-    
-    function handleTouchMove(event) {
-        if (!isTabletMode || !isLooking) return;
-        
-        const touch = event.touches[0];
-        const deltaX = touch.clientX - touchStartX;
-        const deltaY = touch.clientY - touchStartY;
-        
-        // 視点の回転感度
-        const sensitivity = 0.002;
-        
-        // 水平回転（Y軸周り）
-        controls.getObject().rotation.y -= deltaX * sensitivity;
-        
-        // 垂直回転（カメラのX軸回り）
-        camera.rotation.x -= deltaY * sensitivity;
-        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-        
-        touchStartX = touch.clientX;
-        touchStartY = touch.clientY;
-        
-        event.preventDefault();
-    }
-    
-    function handleTouchEnd(event) {
-        if (!isTabletMode) return;
-        isLooking = false;
-        event.preventDefault();
-    }
-    
-    // タッチイベントリスナーを追加
-    document.addEventListener('touchstart', handleTouchStart, { passive: false });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd, { passive: false });
 }
 
 // PointerLockControls
@@ -1111,7 +1212,7 @@ function swingSword() {
     console.log('剣振りアクション開始！');
     
     // 剣振りアニメーション
-    const swingDuration = 300; // 0.3秒
+    const swingDuration = 300;
     const startTime = Date.now();
     
     function animateSwing() {
@@ -1148,7 +1249,7 @@ function checkSwordHit() {
         const otherPlayer = players[id];
         const distance = controls.getObject().position.distanceTo(otherPlayer.position);
         
-        if (distance < 4.0) { // 剣の攻撃範囲
+        if (distance < 4.0) {
             console.log(`剣攻撃ヒット！鬼交代: ${myId} → ${id}`);
             ws.send(JSON.stringify({ 
                 type: 'tag_player',
@@ -1160,7 +1261,7 @@ function checkSwordHit() {
     }
 }
 
-// 雪玉投擲（分離）
+// 雪玉投擲
 function throwSnowball() {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
@@ -1185,7 +1286,7 @@ function throwSnowball() {
     updateUI();
 }
 
-// キーボードイベント（WASD修正版）
+// キーボードイベント
 const keys = {};
 
 document.addEventListener('keydown', (event) => {
@@ -1195,22 +1296,45 @@ document.addEventListener('keydown', (event) => {
     
     switch (event.code) {
         case 'KeyW':
-            moveBackward = true; // W = 後退
+            moveBackward = true;
             break;
         case 'KeyA':
-            moveRight = true; // A = 右移動
+            moveRight = true;
             break;
         case 'KeyS':
-            moveForward = true; // S = 前進
+            moveForward = true;
             break;
         case 'KeyD':
-            moveLeft = true; // D = 左移動
+            moveLeft = true;
             break;
         case 'Space':
             event.preventDefault();
-            if (canJump) {
-                velocity.y += 18; // 強化されたジャンプ力
+            if (flightEnabled && isFlying) {
+                // フライト中は上昇
+                velocity.y += 15;
+            } else if (canJump) {
+                // 通常ジャンプ
+                velocity.y += 18;
                 canJump = false;
+            }
+            break;
+        case 'ShiftLeft':
+            event.preventDefault();
+            if (flightEnabled && isFlying) {
+                // フライト中は下降
+                velocity.y -= 15;
+            }
+            break;
+        case 'KeyF':
+            event.preventDefault();
+            if (flightEnabled && playerRank === 'OWNER') {
+                // フライト切り替え
+                isFlying = !isFlying;
+                const flightStatus = document.getElementById('flight-status');
+                if (flightStatus) {
+                    flightStatus.textContent = isFlying ? 'フライト有効' : 'フライト無効';
+                }
+                showMessage(isFlying ? 'フライトモード有効！' : 'フライトモード無効', 'success', 2000);
             }
             break;
     }
@@ -1270,342 +1394,373 @@ function updateUI() {
     const minutes = Math.floor(gameTime / 60);
     const seconds = gameTime % 60;
     
-    document.getElementById('player-id').textContent = myId;
-    document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
-    document.getElementById('score').textContent = gameState.score;
-    document.getElementById('game-time').textContent = 
-        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    // 赤いアイテム数の更新
-    const redItemsElement = document.getElementById('red-items');
-    const redItemsCountElement = document.getElementById('red-items-count');
-    const snowballStatusElement = document.getElementById('snowball-status');
-    
-    if (redItemsElement) {
-        redItemsElement.textContent = gameState.redItemsCollected;
-    }
-    
-    if (redItemsCountElement) {
-        redItemsCountElement.style.display = myId !== oniId ? 'block' : 'none';
-    }
-    
-    if (snowballStatusElement) {
-        snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
-    }
-    
-    // 鬼時間の更新
-    const oniTimeElement = document.getElementById('oni-time');
-    if (myId === oniId) {
-        oniTimeElement.style.display = 'block';
-        let totalOniTime = gameState.timeAsOni;
-        if (gameState.oniStartTime) {
-            totalOniTime += currentTime - gameState.oniStartTime;
+    if (document.getElementById('player-id')) {
+        document.getElementById('player-id').textContent = myId;
+        document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
+        document.getElementById('score').textContent = gameState.score;
+        document.getElementById('game-time').textContent = 
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        // 赤いアイテム数の更新
+        const redItemsElement = document.getElementById('red-items');
+        const redItemsCountElement = document.getElementById('red-items-count');
+        const snowballStatusElement = document.getElementById('snowball-status');
+        
+        if (redItemsElement) {
+            redItemsElement.textContent = gameState.redItemsCollected;
         }
-        const oniSeconds = Math.floor(totalOniTime / 1000);
-        const oniMins = Math.floor(oniSeconds / 60);
-        const oniSecs = oniSeconds % 60;
-        document.getElementById('oni-duration').textContent = 
-            `${oniMins.toString().padStart(2, '0')}:${oniSecs.toString().padStart(2, '0')}`;
-    } else {
-        oniTimeElement.style.display = 'none';
+        
+        if (redItemsCountElement) {
+            redItemsCountElement.style.display = myId !== oniId ? 'block' : 'none';
+        }
+        
+        if (snowballStatusElement) {
+            snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
+        }
+        
+        // 鬼時間の更新
+        const oniTimeElement = document.getElementById('oni-time');
+        if (myId === oniId) {
+            oniTimeElement.style.display = 'block';
+            let totalOniTime = gameState.timeAsOni;
+            if (gameState.oniStartTime) {
+                totalOniTime += currentTime - gameState.oniStartTime;
+            }
+            
+            const oniMinutes = Math.floor(totalOniTime / 60000);
+            const oniSeconds = Math.floor((totalOniTime % 60000) / 1000);
+            document.getElementById('oni-duration').textContent = 
+                `${oniMinutes.toString().padStart(2, '0')}:${oniSeconds.toString().padStart(2, '0')}`;
+        } else {
+            oniTimeElement.style.display = 'none';
+        }
     }
+    
+    // ミニマップの更新
+    updateMinimap();
 }
 
 // ミニマップの更新
 function updateMinimap() {
+    if (!gameState.minimapCtx) return;
+    
     const ctx = gameState.minimapCtx;
     const canvas = gameState.minimapCanvas;
     
-    if (!ctx || !canvas) return;
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = '#222222';
+    // 背景をクリア
+    ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
-    
-    const scale = (canvas.width - 20) / 200;
+    // マップサイズとスケール
+    const mapSize = 200;
+    const scale = canvas.width / mapSize;
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     
-    // 自分の位置
-    const myPos = controls.getObject().position;
-    const myX = centerX + myPos.x * scale;
-    const myZ = centerY + myPos.z * scale;
+    // プレイヤーの現在位置
+    const playerPos = controls.getObject().position;
     
-    ctx.fillStyle = myId === oniId ? '#0000ff' : '#00ff00';
-    ctx.beginPath();
-    ctx.arc(myX, myZ, 4, 0, Math.PI * 2);
-    ctx.fill();
+    // 建物を描画
+    ctx.fillStyle = '#8B4513';
+    blocks.forEach(block => {
+        const x = centerX + (block.position.x - playerPos.x) * scale;
+        const y = centerY + (block.position.z - playerPos.z) * scale;
+        const size = 4;
+        
+        if (x > -size && x < canvas.width + size && y > -size && y < canvas.height + size) {
+            ctx.fillRect(x - size/2, y - size/2, size, size);
+        }
+    });
     
-    // 他のプレイヤーの位置
+    // 赤いアイテムを描画
+    ctx.fillStyle = '#ff0000';
+    for (const id in redItems) {
+        const item = redItems[id];
+        const x = centerX + (item.position.x - playerPos.x) * scale;
+        const y = centerY + (item.position.z - playerPos.z) * scale;
+        
+        if (x > 0 && x < canvas.width && y > 0 && y < canvas.height) {
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+    
+    // 他のプレイヤーを描画
     for (const id in players) {
         const player = players[id];
-        const playerX = centerX + player.position.x * scale;
-        const playerZ = centerY + player.position.z * scale;
+        const x = centerX + (player.position.x - playerPos.x) * scale;
+        const y = centerY + (player.position.z - playerPos.z) * scale;
         
-        ctx.fillStyle = id === oniId ? '#ff0000' : '#88ff88';
-        ctx.beginPath();
-        ctx.arc(playerX, playerZ, 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // 赤いアイテムの位置
-    ctx.fillStyle = '#ff4444';
-    for (const id in redItems) {
-        const item = redItems[id];
-        const itemX = centerX + item.position.x * scale;
-        const itemZ = centerY + item.position.z * scale;
-        
-        ctx.beginPath();
-        ctx.arc(itemX, itemZ, 2, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // ブロックの表示（削除済み）
-    // blocks.forEach(block => {
-    //     const blockX = centerX + block.position.x * scale;
-    //     const blockZ = centerY + block.position.z * scale;
-    //     const size = 3;
-    //     ctx.fillRect(blockX - size/2, blockZ - size/2, size, size);
-    // });
-}
-
-// ブロックとの衝突判定
-function checkBlockCollision(playerPos, playerRadius) {
-    for (const block of blocks) {
-        const blockPos = block.position;
-        const blockSize = block.geometry.parameters;
-        
-        // AABB衝突判定
-        const blockHalfWidth = blockSize.width / 2;
-        const blockHalfDepth = blockSize.depth / 2;
-        const blockHeight = blockSize.height;
-        
-        // プレイヤーがブロックの高さ範囲内にいるかチェック
-        if (playerPos.y + 1.7 > blockPos.y && playerPos.y < blockPos.y + blockHeight) {
-            // X軸とZ軸での衝突判定
-            if (Math.abs(playerPos.x - blockPos.x) < blockHalfWidth + playerRadius &&
-                Math.abs(playerPos.z - blockPos.z) < blockHalfDepth + playerRadius) {
-                
-                // 衝突した場合、押し戻す方向を計算
-                const deltaX = playerPos.x - blockPos.x;
-                const deltaZ = playerPos.z - blockPos.z;
-                
-                // より大きな軸で押し戻し
-                if (Math.abs(deltaX) > Math.abs(deltaZ)) {
-                    // X軸方向に押し戻し
-                    if (deltaX > 0) {
-                        playerPos.x = blockPos.x + blockHalfWidth + playerRadius + 0.1;
-                    } else {
-                        playerPos.x = blockPos.x - blockHalfWidth - playerRadius - 0.1;
-                    }
-                    velocity.x *= -0.5; // 反発
-                } else {
-                    // Z軸方向に押し戻し
-                    if (deltaZ > 0) {
-                        playerPos.z = blockPos.z + blockHalfDepth + playerRadius + 0.1;
-                    } else {
-                        playerPos.z = blockPos.z - blockHalfDepth - playerRadius - 0.1;
-                    }
-                    velocity.z *= -0.5; // 反発
-                }
-                
-                return true; // 衝突があった
-            }
+        if (x > 0 && x < canvas.width && y > 0 && y < canvas.height) {
+            ctx.fillStyle = id === oniId ? '#0000ff' : '#00ff00';
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // プレイヤー名を表示
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(id, x, y - 6);
         }
     }
-    return false; // 衝突なし
+    
+    // 自分を描画（中央）
+    ctx.fillStyle = myId === oniId ? '#0000ff' : '#00ff00';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // 方向指示
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    ctx.lineTo(centerX + direction.x * 10, centerY + direction.z * 10);
+    ctx.stroke();
 }
 
-// アニメーションループ
-let prevTime = performance.now();
+// メッセージ表示関数
+function showMessage(text, type = 'info', duration = 3000) {
+    const messageContainer = document.getElementById('message-container') || createMessageContainer();
+    
+    const messageElement = document.createElement('div');
+    messageElement.style.cssText = `
+        background: ${type === 'success' ? 'rgba(0, 255, 0, 0.8)' : 
+                     type === 'error' ? 'rgba(255, 0, 0, 0.8)' : 
+                     'rgba(0, 123, 255, 0.8)'};
+        color: white;
+        padding: 10px 15px;
+        margin: 5px 0;
+        border-radius: 5px;
+        font-weight: bold;
+        animation: slideIn 0.3s ease-out;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    `;
+    messageElement.textContent = text;
+    
+    messageContainer.appendChild(messageElement);
+    
+    setTimeout(() => {
+        if (messageElement.parentNode) {
+            messageElement.style.animation = 'slideOut 0.3s ease-in';
+            setTimeout(() => {
+                if (messageElement.parentNode) {
+                    messageContainer.removeChild(messageElement);
+                }
+            }, 300);
+        }
+    }, duration);
+}
 
+function createMessageContainer() {
+    const container = document.createElement('div');
+    container.id = 'message-container';
+    container.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 3000;
+        max-width: 400px;
+        pointer-events: none;
+    `;
+    
+    // アニメーション用のスタイルを追加
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-20px); }
+        }
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.1); }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(container);
+    return container;
+}
+
+// 衝突検出
+function checkCollisions(targetPosition) {
+    const playerRadius = 1.0;
+    
+    for (const block of blocks) {
+        const blockBox = new THREE.Box3().setFromObject(block);
+        const playerBox = new THREE.Box3().setFromCenterAndSize(
+            targetPosition,
+            new THREE.Vector3(playerRadius * 2, 3.4, playerRadius * 2)
+        );
+        
+        if (blockBox.intersectsBox(playerBox)) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// 赤いアイテムの収集チェック
+function checkRedItemCollection() {
+    const playerPosition = controls.getObject().position;
+    const collectionDistance = 2.0;
+    
+    for (const id in redItems) {
+        const item = redItems[id];
+        const distance = playerPosition.distanceTo(item.position);
+        
+        if (distance < collectionDistance) {
+            ws.send(JSON.stringify({
+                type: 'collect_red_item',
+                playerId: myId,
+                itemId: id
+            }));
+            break;
+        }
+    }
+}
+
+// ゲームループ
 function animate() {
     requestAnimationFrame(animate);
-
-    const time = performance.now();
-    const delta = Math.min((time - prevTime) / 1000, 1/30);
-
-    // 摩擦力の適用
-    velocity.x *= Math.pow(0.1, delta);
-    velocity.z *= Math.pow(0.1, delta);
     
-    // 重力の適用
-    velocity.y -= 9.8 * 15.0 * delta;
-
-    // 入力方向の計算（キーボード + ジョイスティック）
-    let inputX = 0;
-    let inputZ = 0;
-    
-    // キーボード入力
-    if (moveForward || moveBackward) {
-        inputZ = Number(moveForward) - Number(moveBackward);
-    }
-    if (moveLeft || moveRight) {
-        inputX = Number(moveRight) - Number(moveLeft);
+    if (!isConnected) {
+        renderer.render(scene, camera);
+        return;
     }
     
-    // ジョイスティック入力（タブレットモード時）
-    if (isTabletMode && joystickActive) {
-        inputX = joystickPosition.x;
-        inputZ = joystickPosition.y;
+    // プレイヤー移動の処理
+    direction.z = Number(moveForward) - Number(moveBackward);
+    direction.x = Number(moveRight) - Number(moveLeft);
+    direction.normalize();
+    
+    // ジョイスティック入力の処理
+    if (joystickActive) {
+        direction.x += joystickPosition.x;
+        direction.z += joystickPosition.y;
+        direction.normalize();
     }
     
-    // 入力の正規化
-    const inputLength = Math.sqrt(inputX * inputX + inputZ * inputZ);
-    if (inputLength > 0) {
-        inputX /= inputLength;
-        inputZ /= inputLength;
-    }
-
-    // 移動速度の適用（0.7倍に減速）
-    const moveSpeed = 56.0; // 80.0 * 0.7 = 56.0 (0.7倍に減速)
-    velocity.z -= inputZ * moveSpeed * delta;
-    velocity.x -= inputX * moveSpeed * delta;
+    const speed = 15.0;
+    const currentPosition = controls.getObject().position.clone();
     
-    // 位置の更新
-    controls.moveRight(velocity.x * delta);
-    controls.moveForward(velocity.z * delta);
-    controls.getObject().position.y += velocity.y * delta;
-    
-    // 安全境界での衝突判定（ソフトな押し戻し）
-    const playerRadius = 1.0;
-    const playerPos = controls.getObject().position;
-    const safetyMargin = 8; // 壁から8ユニット離れた安全境界
-    const pushForce = 0.05; // 非常に弱い押し戻し力
-    
-    // 外周の安全境界チェック
-    if (playerPos.x < -WALL_SIZE/2 + safetyMargin) {
-        velocity.x += pushForce;
-    }
-    if (playerPos.x > WALL_SIZE/2 - safetyMargin) {
-        velocity.x -= pushForce;
-    }
-    if (playerPos.z < -WALL_SIZE/2 + safetyMargin) {
-        velocity.z += pushForce;
-    }
-    if (playerPos.z > WALL_SIZE/2 - safetyMargin) {
-        velocity.z -= pushForce;
+    if (moveForward || moveBackward || joystickActive) {
+        const moveVector = new THREE.Vector3();
+        controls.getObject().getWorldDirection(moveVector);
+        moveVector.y = 0;
+        moveVector.normalize();
+        moveVector.multiplyScalar(direction.z * speed);
+        
+        const newPosition = currentPosition.clone().add(moveVector);
+        newPosition.y = currentPosition.y;
+        
+        if (!checkCollisions(newPosition)) {
+            velocity.z -= direction.z * speed;
+        }
     }
     
-    // ブロックとの衝突判定（削除済み）
-    // checkBlockCollision(playerPos, playerRadius);
-    
-    // 地面との衝突判定
-    if (controls.getObject().position.y < 1.7) {
-        velocity.y = 0;
-        controls.getObject().position.y = 1.7;
-        canJump = true;
+    if (moveLeft || moveRight || joystickActive) {
+        const strafeVector = new THREE.Vector3();
+        controls.getObject().getWorldDirection(strafeVector);
+        strafeVector.cross(controls.getObject().up);
+        strafeVector.y = 0;
+        strafeVector.normalize();
+        strafeVector.multiplyScalar(direction.x * speed);
+        
+        const newPosition = currentPosition.clone().add(strafeVector);
+        newPosition.y = currentPosition.y;
+        
+        if (!checkCollisions(newPosition)) {
+            velocity.x -= direction.x * speed;
+        }
     }
-
-    // 赤いアイテムとの衝突判定
+    
+    // 重力とジャンプの処理
+    if (!isFlying) {
+        velocity.y -= 50.0; // 重力
+        
+        if (controls.getObject().position.y <= 1.7) {
+            velocity.y = 0;
+            controls.getObject().position.y = 1.7;
+            canJump = true;
+        }
+    } else {
+        // フライト中は重力無効
+        velocity.y *= 0.9; // 減衰
+    }
+    
+    // 最終的な位置更新
+    const finalPosition = controls.getObject().position.clone();
+    const deltaTime = 1/60;
+    
+    finalPosition.x += velocity.x * deltaTime;
+    finalPosition.z += velocity.z * deltaTime;
+    
+    if (!checkCollisions(finalPosition)) {
+        controls.getObject().position.copy(finalPosition);
+    }
+    
+    controls.getObject().position.y += velocity.y * deltaTime;
+    
+    // 速度の減衰
+    velocity.x *= 0.8;
+    velocity.z *= 0.8;
+    
+    // マップ境界チェック
+    const mapLimit = 98;
+    if (controls.getObject().position.x < -mapLimit) controls.getObject().position.x = -mapLimit;
+    if (controls.getObject().position.x > mapLimit) controls.getObject().position.x = mapLimit;
+    if (controls.getObject().position.z < -mapLimit) controls.getObject().position.z = -mapLimit;
+    if (controls.getObject().position.z > mapLimit) controls.getObject().position.z = mapLimit;
+    
+    // アイテム収集チェック
+    checkRedItemCollection();
+    
+    // 位置送信
+    sendPositionUpdate();
+    
+    // UI更新
+    updateUI();
+    
+    // レンダリング
+    renderer.render(scene, camera);
+    
+    // 赤いアイテムの回転アニメーション
+    const time = Date.now() * 0.001;
     for (const id in redItems) {
         const item = redItems[id];
-        const distance = controls.getObject().position.distanceTo(item.position);
-        if (distance < 2.0) {
-            console.log(`赤いアイテム ${id} に接触！距離: ${distance.toFixed(2)}`);
-            ws.send(JSON.stringify({ type: 'collect_red_item', itemId: id }));
+        item.rotation.y = time;
+        item.position.y = item.userData.originalY || item.position.y + Math.sin(time * 2) * 0.3;
+        if (!item.userData.originalY) {
+            item.userData.originalY = item.position.y;
         }
     }
-
-    // 赤いアイテムの回転アニメーション
-    for (const id in redItems) {
-        redItems[id].rotation.y += delta * 6; // 超高速回転
-        redItems[id].rotation.x += delta * 4; 
-        redItems[id].position.y = 2.0 + Math.sin(time * 0.01) * 1.0; // 大きな浮遊
-        
-        // さらに目立つように光らせる
-        if (redItems[id].material) {
-            redItems[id].material.emissive.setHex(0xff0000);
-            redItems[id].material.emissiveIntensity = 0.5 + Math.sin(time * 0.01) * 0.5;
+    
+    // ランク表示をカメラの方向に向ける
+    for (const id in players) {
+        const player = players[id];
+        if (player.rankDisplay) {
+            player.rankDisplay.lookAt(camera.position);
         }
     }
-
-    // 位置情報の送信
-    sendPositionUpdate();
-
-    // UIとミニマップの更新
-    updateUI();
-    updateMinimap();
-
-    renderer.render(scene, camera);
-    prevTime = time;
 }
 
-animate();
-
-// ウィンドウリサイズ対応
+// ウィンドウリサイズイベント
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 鬼ごっこの判定（確実な鬼交代システム）
-setInterval(() => {
-    if (!isConnected) return;
-    
-    if (myId === oniId) {
-        // 鬼の場合：自動的な近接判定（剣振り以外）
-        for (const id in players) {
-            if (id === myId) continue;
-            const otherPlayer = players[id];
-            const distance = controls.getObject().position.distanceTo(otherPlayer.position);
-            
-            if (distance < 2.5) { // 自動タッチ判定
-                console.log(`自動近接タッチ検出！鬼交代: ${myId} → ${id}, 距離: ${distance.toFixed(2)}`);
-                ws.send(JSON.stringify({ 
-                    type: 'tag_player',
-                    id: myId,
-                    taggedId: id 
-                }));
-                break;
-            } else if (distance < 4.0) {
-                // ！マーク表示
-                ws.send(JSON.stringify({ 
-                    type: 'show_exclamation',
-                    playerId: id
-                }));
-            }
-        }
-    } else {
-        // 逃走者の場合：鬼との距離をチェック
-        if (players[oniId]) {
-            const distance = controls.getObject().position.distanceTo(players[oniId].position);
-            
-            if (distance < 4.0 && !showExclamation) {
-                showExclamation = true;
-                showExclamationMark();
-            } else if (distance >= 4.0 && showExclamation) {
-                showExclamation = false;
-                hideExclamationMark();
-            }
-        }
-    }
-}, 200); // より頻繁にチェック
-
-// メッセージ表示関数
-function showMessage(text, type = 'info', duration = 3000) {
-    let messageElement;
-    
-    if (type === 'error') {
-        messageElement = document.getElementById('error-message');
-    } else if (type === 'success') {
-        messageElement = document.getElementById('success-message');
-    }
-    
-    if (messageElement) {
-        messageElement.textContent = text;
-        messageElement.style.display = 'block';
-        
-        setTimeout(() => {
-            messageElement.style.display = 'none';
-        }, duration);
-    } else {
-        console.log(text);
-    }
-}
+// ゲーム開始
+animate();
