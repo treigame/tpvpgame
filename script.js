@@ -1327,7 +1327,7 @@ document.addEventListener('keydown', (event) => {
                 if (flightStatus) {
                     flightStatus.textContent = isFlying ? 'フライト有効' : 'フライト無効';
                 }
-                showMessage(isFlying ? 'フライトモード有効！' : 'フライトモード無効', 'success', 2000);
+                showMessage(isFlying ? 'フライトモード有効！待機関係なく自由飛行可能' : 'フライトモード無効', 'success', 2000);
             }
             break;
     }
@@ -1634,6 +1634,16 @@ function animate() {
         return;
     }
     
+    // フライトモード中は常に移動可能
+    if (isFlying && flightEnabled) {
+        // フライト中は待機やゲーム状態に関係なく移動可能
+        handleFlightMovement();
+        sendPositionUpdate();
+        updateUI();
+        renderer.render(scene, camera);
+        return;
+    }
+    
     // ゲーム開始前は移動を無効化
     if (!gameStarted || !isSpawned) {
         // 待機中は空中に固定
@@ -1646,6 +1656,103 @@ function animate() {
         return;
     }
     
+    // 通常のゲーム移動処理
+    handleNormalMovement();
+    
+    // マップ境界チェック
+    const mapLimit = 98;
+    if (controls.getObject().position.x < -mapLimit) controls.getObject().position.x = -mapLimit;
+    if (controls.getObject().position.x > mapLimit) controls.getObject().position.x = mapLimit;
+    if (controls.getObject().position.z < -mapLimit) controls.getObject().position.z = -mapLimit;
+    if (controls.getObject().position.z > mapLimit) controls.getObject().position.z = mapLimit;
+    
+    // アイテム収集チェック
+    checkRedItemCollection();
+    
+    // 位置送信
+    sendPositionUpdate();
+    
+    // UI更新
+    updateUI();
+    
+    // レンダリング
+    renderer.render(scene, camera);
+    
+    // 赤いアイテムの回転アニメーション
+    const time = Date.now() * 0.001;
+    for (const id in redItems) {
+        const item = redItems[id];
+        item.rotation.y = time;
+        if (!item.userData.originalY) {
+            item.userData.originalY = item.position.y;
+        }
+        item.position.y = item.userData.originalY + Math.sin(time * 2) * 0.3;
+    }
+    
+    // ランク表示をカメラの方向に向ける
+    for (const id in players) {
+        const player = players[id];
+        if (player.rankDisplay) {
+            player.rankDisplay.lookAt(camera.position);
+        }
+    }
+}
+
+// フライト移動処理
+function handleFlightMovement() {
+    direction.set(0, 0, 0);
+    
+    // WASD移動
+    if (moveForward) direction.z -= 1;
+    if (moveBackward) direction.z += 1;
+    if (moveLeft) direction.x -= 1;
+    if (moveRight) direction.x += 1;
+    
+    // ジョイスティック入力
+    if (joystickActive) {
+        direction.x += joystickPosition.x;
+        direction.z += joystickPosition.y;
+    }
+    
+    if (direction.length() > 0) {
+        direction.normalize();
+    }
+    
+    const speed = 20.0; // フライト時は高速移動
+    const deltaTime = 1/60;
+    const currentPos = controls.getObject().position.clone();
+    
+    // 水平移動
+    if (direction.z !== 0) {
+        const moveVector = new THREE.Vector3();
+        controls.getObject().getWorldDirection(moveVector);
+        moveVector.y = 0;
+        moveVector.normalize();
+        moveVector.multiplyScalar(direction.z * speed * deltaTime);
+        currentPos.add(moveVector);
+    }
+    
+    if (direction.x !== 0) {
+        const strafeVector = new THREE.Vector3();
+        controls.getObject().getWorldDirection(strafeVector);
+        strafeVector.cross(controls.getObject().up);
+        strafeVector.y = 0;
+        strafeVector.normalize();
+        strafeVector.multiplyScalar(direction.x * speed * deltaTime);
+        currentPos.add(strafeVector);
+    }
+    
+    // 衝突チェックなしで移動
+    controls.getObject().position.x = currentPos.x;
+    controls.getObject().position.z = currentPos.z;
+    
+    // 垂直移動（重力無効）
+    velocity.y *= 0.9; // 減衰
+    controls.getObject().position.y += velocity.y * deltaTime;
+}
+
+// 通常移動処理
+function handleNormalMovement() {
     // プレイヤー移動の処理（完全修正版）
     direction.set(0, 0, 0);
     
@@ -1711,117 +1818,40 @@ function animate() {
     }
     
     // 重力とジャンプの処理
-    if (!isFlying) {
-        velocity.y -= 50.0; // 重力
-        
-        if (controls.getObject().position.y <= 1.7) {
-            velocity.y = 0;
-            controls.getObject().position.y = 1.7;
-            canJump = true;
-        }
-    } else {
-        // フライト中は重力無効
-        velocity.y *= 0.9; // 減衰
+    velocity.y -= 50.0; // 重力
+    
+    if (controls.getObject().position.y <= 1.7) {
+        velocity.y = 0;
+        controls.getObject().position.y = 1.7;
+        canJump = true;
     }
     
-    // 最終的な位置更新（フライト中は異なる計算）
+    // 最終的な位置更新
     const deltaTime = 1/60;
+    const finalPosition = controls.getObject().position.clone();
     
-    if (isFlying && flightEnabled) {
-        // フライト中はWASDで水平移動
-        const currentPos = controls.getObject().position.clone();
-        
-        if (direction.z !== 0) {
-            const moveVector = new THREE.Vector3();
-            controls.getObject().getWorldDirection(moveVector);
-            moveVector.y = 0;
-            moveVector.normalize();
-            moveVector.multiplyScalar(direction.z * speed * deltaTime);
-            currentPos.add(moveVector);
-        }
-        
-        if (direction.x !== 0) {
-            const strafeVector = new THREE.Vector3();
-            controls.getObject().getWorldDirection(strafeVector);
-            strafeVector.cross(controls.getObject().up);
-            strafeVector.y = 0;
-            strafeVector.normalize();
-            strafeVector.multiplyScalar(direction.x * speed * deltaTime);
-            currentPos.add(strafeVector);
-        }
-        
-        // 衝突チェック
-        if (!checkCollisions(currentPos)) {
-            controls.getObject().position.copy(currentPos);
-        }
-        
-        // 垂直移動
-        controls.getObject().position.y += velocity.y * deltaTime;
-    } else {
-        // 通常移動
-        const finalPosition = controls.getObject().position.clone();
-        
-        // カメラ方向基準の移動計算
-        const forward = new THREE.Vector3();
-        controls.getObject().getWorldDirection(forward);
-        forward.y = 0;
-        forward.normalize();
-        
-        const right = new THREE.Vector3();
-        right.crossVectors(forward, controls.getObject().up).normalize();
-        
-        // 移動ベクトル合成
-        const moveVector = new THREE.Vector3();
-        moveVector.addScaledVector(forward, -velocity.z * deltaTime);
-        moveVector.addScaledVector(right, velocity.x * deltaTime);
-        
-        finalPosition.add(moveVector);
-        
-        if (!checkCollisions(finalPosition)) {
-            controls.getObject().position.x = finalPosition.x;
-            controls.getObject().position.z = finalPosition.z;
-        }
-        
-        controls.getObject().position.y += velocity.y * deltaTime;
+    // カメラ方向基準の移動計算
+    const forward = new THREE.Vector3();
+    controls.getObject().getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    
+    const right = new THREE.Vector3();
+    right.crossVectors(forward, controls.getObject().up).normalize();
+    
+    // 移動ベクトル合成
+    const moveVector = new THREE.Vector3();
+    moveVector.addScaledVector(forward, -velocity.z * deltaTime);
+    moveVector.addScaledVector(right, velocity.x * deltaTime);
+    
+    finalPosition.add(moveVector);
+    
+    if (!checkCollisions(finalPosition)) {
+        controls.getObject().position.x = finalPosition.x;
+        controls.getObject().position.z = finalPosition.z;
     }
     
-    // マップ境界チェック
-    const mapLimit = 98;
-    if (controls.getObject().position.x < -mapLimit) controls.getObject().position.x = -mapLimit;
-    if (controls.getObject().position.x > mapLimit) controls.getObject().position.x = mapLimit;
-    if (controls.getObject().position.z < -mapLimit) controls.getObject().position.z = -mapLimit;
-    if (controls.getObject().position.z > mapLimit) controls.getObject().position.z = mapLimit;
-    
-    // アイテム収集チェック
-    checkRedItemCollection();
-    
-    // 位置送信
-    sendPositionUpdate();
-    
-    // UI更新
-    updateUI();
-    
-    // レンダリング
-    renderer.render(scene, camera);
-    
-    // 赤いアイテムの回転アニメーション
-    const time = Date.now() * 0.001;
-    for (const id in redItems) {
-        const item = redItems[id];
-        item.rotation.y = time;
-        if (!item.userData.originalY) {
-            item.userData.originalY = item.position.y;
-        }
-        item.position.y = item.userData.originalY + Math.sin(time * 2) * 0.3;
-    }
-    
-    // ランク表示をカメラの方向に向ける
-    for (const id in players) {
-        const player = players[id];
-        if (player.rankDisplay) {
-            player.rankDisplay.lookAt(camera.position);
-        }
-    }
+    controls.getObject().position.y += velocity.y * deltaTime;
 }
 
 // ウィンドウリサイズイベント
