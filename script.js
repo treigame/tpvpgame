@@ -113,8 +113,24 @@ ws.onmessage = (event) => {
         if (data.id !== myId) {
             if (!players[data.id]) {
                 createPlayerMesh(data.id, data);
+                console.log(`新しいプレイヤーメッシュを作成: ${data.id}`);
+            } else {
+                // 滑らかな移動補間
+                const player = players[data.id];
+                const targetPos = new THREE.Vector3(data.x, data.y, data.z);
+                const currentPos = player.position.clone();
+                const distance = currentPos.distanceTo(targetPos);
+                
+                // 距離が大きい場合は即座に移動（テレポート）
+                if (distance > 10) {
+                    player.position.set(data.x, data.y, data.z);
+                    console.log(`プレイヤー ${data.id} をテレポート: 距離=${distance.toFixed(2)}`);
+                } else {
+                    // 滑らかな移動
+                    player.position.lerp(targetPos, 0.3);
+                }
+                console.log(`プレイヤー ${data.id} 位置更新: (${data.x.toFixed(1)}, ${data.y.toFixed(1)}, ${data.z.toFixed(1)})`);
             }
-            players[data.id].position.set(data.x, data.y, data.z);
         }
     } else if (data.type === 'remove_player') {
         if (players[data.id]) {
@@ -1355,7 +1371,7 @@ document.addEventListener('keyup', (event) => {
 // プレイヤー位置送信の最適化
 let lastSentPosition = new THREE.Vector3();
 let lastSentTime = 0;
-const POSITION_SEND_INTERVAL = 50;
+const POSITION_SEND_INTERVAL = 100; // 100msに変更（より頻繁に）
 const POSITION_THRESHOLD = 0.1;
 
 function sendPositionUpdate() {
@@ -1364,7 +1380,10 @@ function sendPositionUpdate() {
     const currentTime = performance.now();
     const currentPosition = controls.getObject().position;
     
-    if (currentTime - lastSentTime > POSITION_SEND_INTERVAL && 
+    // ゲーム開始前でもフライト中は位置送信
+    const shouldSend = gameStarted || (isFlying && flightEnabled);
+    
+    if (shouldSend && currentTime - lastSentTime > POSITION_SEND_INTERVAL && 
         currentPosition.distanceTo(lastSentPosition) > POSITION_THRESHOLD) {
         
         ws.send(JSON.stringify({
@@ -1377,6 +1396,7 @@ function sendPositionUpdate() {
         
         lastSentPosition.copy(currentPosition);
         lastSentTime = currentTime;
+        console.log(`位置送信: (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)})`);
     }
 }
 
@@ -1754,67 +1774,51 @@ function handleFlightMovement() {
 // 通常移動処理
 function handleNormalMovement() {
     // プレイヤー移動の処理（完全修正版）
-    direction.set(0, 0, 0);
+    const inputDirection = new THREE.Vector3();
     
     // WASD移動（正しい方向）
-    if (moveForward) direction.z -= 1; // W = 前進（カメラの前方向）
-    if (moveBackward) direction.z += 1; // S = 後退（カメラの後方向）
-    if (moveLeft) direction.x -= 1; // A = 左移動
-    if (moveRight) direction.x += 1; // D = 右移動
+    if (moveForward) inputDirection.z -= 1; // W = 前進（カメラの前方向）
+    if (moveBackward) inputDirection.z += 1; // S = 後退（カメラの後方向）
+    if (moveLeft) inputDirection.x -= 1; // A = 左移動
+    if (moveRight) inputDirection.x += 1; // D = 右移動
     
     // ジョイスティック入力の処理
     if (joystickActive) {
-        direction.x += joystickPosition.x;
-        direction.z += joystickPosition.y;
+        inputDirection.x += joystickPosition.x;
+        inputDirection.z += joystickPosition.y;
     }
     
     // 方向の正規化
-    if (direction.length() > 0) {
-        direction.normalize();
+    if (inputDirection.length() > 0) {
+        inputDirection.normalize();
     }
     
-    const speed = 15.0; // 移動速度
-    const currentPosition = controls.getObject().position.clone();
+    const speed = 15.0;
+    const deltaTime = 1/60;
     
-    // 前後移動（カメラの前方向基準）
-    if (direction.z !== 0) {
-        const moveVector = new THREE.Vector3();
-        controls.getObject().getWorldDirection(moveVector);
-        moveVector.y = 0;
-        moveVector.normalize();
-        moveVector.multiplyScalar(direction.z * speed);
-        
-        const newPosition = currentPosition.clone().add(moveVector);
-        newPosition.y = currentPosition.y;
-        
-        if (!checkCollisions(newPosition)) {
-            velocity.z = direction.z * speed;
-        } else {
-            velocity.z = 0;
-        }
-    } else {
-        velocity.z *= 0.8;
-    }
+    // カメラの方向ベクトルを取得
+    const forward = new THREE.Vector3();
+    controls.getObject().getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
     
-    // 左右移動（カメラの右方向基準）
-    if (direction.x !== 0) {
-        const strafeVector = new THREE.Vector3();
-        controls.getObject().getWorldDirection(strafeVector);
-        strafeVector.cross(controls.getObject().up);
-        strafeVector.y = 0;
-        strafeVector.normalize();
-        strafeVector.multiplyScalar(direction.x * speed);
-        
-        const newPosition = currentPosition.clone().add(strafeVector);
-        newPosition.y = currentPosition.y;
-        
-        if (!checkCollisions(newPosition)) {
-            velocity.x = direction.x * speed;
-        } else {
-            velocity.x = 0;
-        }
-    } else {
-        velocity.x *= 0.8;
+    const right = new THREE.Vector3();
+    right.crossVectors(forward, controls.getObject().up).normalize();
+    
+    // 移動ベクトルを計算
+    const moveVector = new THREE.Vector3();
+    moveVector.addScaledVector(forward, inputDirection.z * speed * deltaTime);
+    moveVector.addScaledVector(right, inputDirection.x * speed * deltaTime);
+    
+    // 新しい位置を計算
+    const currentPos = controls.getObject().position.clone();
+    const newPos = currentPos.clone().add(moveVector);
+    newPos.y = currentPos.y; // Y座標は移動では変更しない
+    
+    // 衝突チェック
+    if (!checkCollisions(newPos)) {
+        controls.getObject().position.x = newPos.x;
+        controls.getObject().position.z = newPos.z;
     }
     
     // 重力とジャンプの処理
@@ -1826,31 +1830,7 @@ function handleNormalMovement() {
         canJump = true;
     }
     
-    // 最終的な位置更新
-    const deltaTime = 1/60;
-    const finalPosition = controls.getObject().position.clone();
-    
-    // カメラ方向基準の移動計算
-    const forward = new THREE.Vector3();
-    controls.getObject().getWorldDirection(forward);
-    forward.y = 0;
-    forward.normalize();
-    
-    const right = new THREE.Vector3();
-    right.crossVectors(forward, controls.getObject().up).normalize();
-    
-    // 移動ベクトル合成
-    const moveVector = new THREE.Vector3();
-    moveVector.addScaledVector(forward, -velocity.z * deltaTime);
-    moveVector.addScaledVector(right, velocity.x * deltaTime);
-    
-    finalPosition.add(moveVector);
-    
-    if (!checkCollisions(finalPosition)) {
-        controls.getObject().position.x = finalPosition.x;
-        controls.getObject().position.z = finalPosition.z;
-    }
-    
+    // 垂直移動
     controls.getObject().position.y += velocity.y * deltaTime;
 }
 

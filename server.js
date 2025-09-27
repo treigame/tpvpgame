@@ -524,6 +524,7 @@ wss.on('connection', (ws, req) => {
                 case 'move':
                     // ゲーム開始前は移動を無効化
                     if (!gameStarted) {
+                        console.log(`プレイヤー ${id} の移動を拒否: ゲーム未開始`);
                         return;
                     }
                     
@@ -538,19 +539,39 @@ wss.on('connection', (ws, req) => {
                         if (isValidPosition(data.x, data.y, data.z)) {
                             // サーバー側でも衝突チェック
                             if (!isPositionInBlock(data.x, data.z, data.y)) {
+                                const oldPos = { x: player.x, y: player.y, z: player.z };
+                                
                                 player.x = parseFloat(data.x);
                                 player.y = parseFloat(data.y);
                                 player.z = parseFloat(data.z);
                                 player.lastUpdate = Date.now();
                                 
+                                // 移動距離をチェック（テレポート防止）
+                                const moveDistance = Math.sqrt(
+                                    Math.pow(player.x - oldPos.x, 2) + 
+                                    Math.pow(player.z - oldPos.z, 2)
+                                );
+                                
+                                if (moveDistance > 5.0) {
+                                    console.log(`⚠️ プレイヤー ${id} の移動距離が異常: ${moveDistance.toFixed(2)}`);
+                                    // 異常な移動は拒否して元の位置に戻す
+                                    player.x = oldPos.x;
+                                    player.y = oldPos.y;
+                                    player.z = oldPos.z;
+                                    return;
+                                }
+                                
                                 // 他のプレイヤーに位置更新を送信
-                                broadcast({ 
+                                const updateMessage = { 
                                     type: 'player_update', 
                                     id: data.id, 
                                     x: player.x, 
                                     y: player.y, 
                                     z: player.z 
-                                }, id);
+                                };
+                                
+                                broadcast(updateMessage, id);
+                                console.log(`プレイヤー ${id} 位置更新: (${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)})`);
                             } else {
                                 console.log(`プレイヤー ${id} が建物内への移動を試行 - 拒否`);
                             }
