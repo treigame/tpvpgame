@@ -257,6 +257,7 @@ function showCountdown(count) {
 
 // ゲーム開始
 function startGame() {
+    console.log('クライアント側: ゲーム開始処理実行');
     gameStarted = true;
     gameCountdown = -1;
     waitingForPlayers = false;
@@ -266,7 +267,7 @@ function startGame() {
     isSpawned = true;
     
     showMessage('ゲーム開始！', 'success', 2000);
-    console.log('ゲームが開始されました');
+    console.log('ゲームが開始されました - 移動可能状態');
 }
 
 // Three.jsシーンのセットアップ
@@ -1371,8 +1372,8 @@ document.addEventListener('keyup', (event) => {
 // プレイヤー位置送信の最適化
 let lastSentPosition = new THREE.Vector3();
 let lastSentTime = 0;
-const POSITION_SEND_INTERVAL = 100; // 100msに変更（より頻繁に）
-const POSITION_THRESHOLD = 0.1;
+const POSITION_SEND_INTERVAL = 50; // 50msに戻す
+const POSITION_THRESHOLD = 0.05; // より敏感に
 
 function sendPositionUpdate() {
     if (!isConnected || !myId) return;
@@ -1380,8 +1381,8 @@ function sendPositionUpdate() {
     const currentTime = performance.now();
     const currentPosition = controls.getObject().position;
     
-    // ゲーム開始前でもフライト中は位置送信
-    const shouldSend = gameStarted || (isFlying && flightEnabled);
+    // スポーン済みなら常に位置送信
+    const shouldSend = isSpawned || (isFlying && flightEnabled);
     
     if (shouldSend && currentTime - lastSentTime > POSITION_SEND_INTERVAL && 
         currentPosition.distanceTo(lastSentPosition) > POSITION_THRESHOLD) {
@@ -1396,7 +1397,7 @@ function sendPositionUpdate() {
         
         lastSentPosition.copy(currentPosition);
         lastSentTime = currentTime;
-        console.log(`位置送信: (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)})`);
+        // デバッグログを削除（パフォーマンス向上）
     }
 }
 
@@ -1656,41 +1657,39 @@ function animate() {
     
     // フライトモード中は常に移動可能
     if (isFlying && flightEnabled) {
-        // フライト中は待機やゲーム状態に関係なく移動可能
         handleFlightMovement();
         sendPositionUpdate();
         updateUI();
         renderer.render(scene, camera);
+        animateItems();
         return;
     }
     
-    // ゲーム開始前は移動を無効化
-    if (!gameStarted || !isSpawned) {
+    // ゲーム状態に関係なく、スポーン済みなら移動可能に変更
+    if (isSpawned) {
+        handleNormalMovement();
+        
+        // マップ境界チェック
+        const mapLimit = 98;
+        if (controls.getObject().position.x < -mapLimit) controls.getObject().position.x = -mapLimit;
+        if (controls.getObject().position.x > mapLimit) controls.getObject().position.x = mapLimit;
+        if (controls.getObject().position.z < -mapLimit) controls.getObject().position.z = -mapLimit;
+        if (controls.getObject().position.z > mapLimit) controls.getObject().position.z = mapLimit;
+        
+        // アイテム収集チェック
+        if (gameStarted) {
+            checkRedItemCollection();
+        }
+        
+        // 位置送信
+        sendPositionUpdate();
+    } else {
         // 待機中は空中に固定
-        if (waitingForPlayers) {
+        if (waitingForPlayers || gameCountdown > 0) {
             controls.getObject().position.y = 15;
             velocity.set(0, 0, 0);
         }
-        renderer.render(scene, camera);
-        updateUI();
-        return;
     }
-    
-    // 通常のゲーム移動処理
-    handleNormalMovement();
-    
-    // マップ境界チェック
-    const mapLimit = 98;
-    if (controls.getObject().position.x < -mapLimit) controls.getObject().position.x = -mapLimit;
-    if (controls.getObject().position.x > mapLimit) controls.getObject().position.x = mapLimit;
-    if (controls.getObject().position.z < -mapLimit) controls.getObject().position.z = -mapLimit;
-    if (controls.getObject().position.z > mapLimit) controls.getObject().position.z = mapLimit;
-    
-    // アイテム収集チェック
-    checkRedItemCollection();
-    
-    // 位置送信
-    sendPositionUpdate();
     
     // UI更新
     updateUI();
@@ -1698,6 +1697,12 @@ function animate() {
     // レンダリング
     renderer.render(scene, camera);
     
+    // アニメーション
+    animateItems();
+}
+
+// アイテムアニメーション分離
+function animateItems() {
     // 赤いアイテムの回転アニメーション
     const time = Date.now() * 0.001;
     for (const id in redItems) {
