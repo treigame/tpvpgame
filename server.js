@@ -12,9 +12,18 @@ let redItems = {}; // 赤いアイテム（オーブの代替）
 let snowballs = {}; // 投げられた雪玉
 let playerRanks = {}; // プレイヤーのランク情報
 let oniId = null;
-const RED_ITEM_COUNT = 20; // 赤いアイテムの数
+const RED_ITEM_COUNT = 25; // 赤いアイテムの数を増加
 let playerCounter = 0;
 let snowballCounter = 0;
+
+// ゲーム統計
+let gameStats = {
+    totalGames: 0,
+    totalOniChanges: 0,
+    totalSnowballsThrown: 0,
+    totalItemsCollected: 0,
+    startTime: Date.now()
+};
 
 // プレイヤーデータの検証関数
 function isValidPosition(x, y, z) {
@@ -29,19 +38,80 @@ app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
 
-// ブロック障害物の定義（削除済み）
-// const blockPositions = [];
+// 建物と障害物の定義（クライアントと同期）
+const buildingPositions = [
+    // 中央広場の建物群
+    { pos: [0, 4, 0], size: [12, 8, 12] },
+    { pos: [20, 3, 20], size: [8, 6, 8] },
+    { pos: [-20, 3, 20], size: [8, 6, 8] },
+    { pos: [20, 3, -20], size: [8, 6, 8] },
+    { pos: [-20, 3, -20], size: [8, 6, 8] },
+    
+    // 外周エリアの建物
+    { pos: [0, 3, 60], size: [15, 6, 10] },
+    { pos: [30, 3, 70], size: [10, 8, 10] },
+    { pos: [-30, 3, 70], size: [10, 8, 10] },
+    { pos: [0, 3, -60], size: [15, 6, 10] },
+    { pos: [40, 3, -65], size: [8, 10, 8] },
+    { pos: [-40, 3, -65], size: [8, 10, 8] },
+    { pos: [70, 3, 0], size: [10, 6, 20] },
+    { pos: [60, 3, 30], size: [12, 5, 8] },
+    { pos: [60, 3, -30], size: [12, 5, 8] },
+    { pos: [-70, 3, 0], size: [10, 6, 20] },
+    { pos: [-60, 3, 30], size: [12, 5, 8] },
+    { pos: [-60, 3, -30], size: [12, 5, 8] },
+    
+    // 迷路風の小さな建物群
+    { pos: [45, 2, 45], size: [6, 4, 6] },
+    { pos: [55, 2, 35], size: [6, 4, 6] },
+    { pos: [35, 2, 55], size: [6, 4, 6] },
+    { pos: [-45, 2, 45], size: [6, 4, 6] },
+    { pos: [-55, 2, 35], size: [6, 4, 6] },
+    { pos: [-35, 2, 55], size: [6, 4, 6] },
+    { pos: [45, 2, -45], size: [6, 4, 6] },
+    { pos: [55, 2, -35], size: [6, 4, 6] },
+    { pos: [35, 2, -55], size: [6, 4, 6] },
+    { pos: [-45, 2, -45], size: [6, 4, 6] },
+    { pos: [-55, 2, -35], size: [6, 4, 6] },
+    { pos: [-35, 2, -55], size: [6, 4, 6] },
+    
+    // 特殊建物
+    { pos: [0, 6, 40], size: [8, 12, 8] },
+    { pos: [0, 6, -40], size: [8, 12, 8] },
+];
 
-// サーバー側でのブロック衝突判定（削除済み）
+// サーバー側でのブロック衝突判定
 function isPositionInBlock(x, z, y = 1.7) {
-    return false; // ブロックなし
+    for (const building of buildingPositions) {
+        const [bx, by, bz] = building.pos;
+        const [w, h, d] = building.size;
+        
+        if (x >= bx - w/2 && x <= bx + w/2 &&
+            z >= bz - d/2 && z <= bz + d/2 &&
+            y >= by - h/2 && y <= by + h/2) {
+            return true;
+        }
+    }
+    return false;
 }
 
-// ブロックを避けて安全な位置を生成（簡素化）
+// ブロックを避けて安全な位置を生成
 function generateSafePosition() {
-    const x = (Math.random() - 0.5) * 150;
-    const z = (Math.random() - 0.5) * 150;
-    return { x, z };
+    let attempts = 0;
+    const maxAttempts = 50;
+    
+    while (attempts < maxAttempts) {
+        const x = (Math.random() - 0.5) * 180; // 範囲を少し狭める
+        const z = (Math.random() - 0.5) * 180;
+        
+        if (!isPositionInBlock(x, z)) {
+            return { x, z };
+        }
+        attempts++;
+    }
+    
+    // フォールバック：中央付近の安全な位置
+    return { x: 0, z: 0 };
 }
 
 // ブロードキャスト関数
@@ -71,37 +141,71 @@ function sendToPlayer(playerId, message) {
     });
 }
 
-// 赤いアイテム生成関数（ブロックを避ける）
+// 赤いアイテム生成関数（改良版）
 function generateRedItems() {
     redItems = {};
-    console.log('赤いアイテム強制生成開始...');
+    console.log('赤いアイテム生成開始...');
     
-    for (let i = 0; i < RED_ITEM_COUNT; i++) {
-        const itemId = `red_item_${i}`;
-        const position = generateSafePosition();
-        
-        redItems[itemId] = {
-            id: itemId,
-            x: position.x,
-            y: 2.0,
-            z: position.z,
-        };
-        
-        console.log(`強制生成: ${itemId} at (${position.x.toFixed(1)}, 2.0, ${position.z.toFixed(1)})`);
+    // 戦略的な配置エリア
+    const itemZones = [
+        // 中央エリア
+        { center: [0, 0], radius: 25, count: 5 },
+        // 四角エリア
+        { center: [40, 40], radius: 20, count: 3 },
+        { center: [-40, 40], radius: 20, count: 3 },
+        { center: [40, -40], radius: 20, count: 3 },
+        { center: [-40, -40], radius: 20, count: 3 },
+        // 外周エリア
+        { center: [0, 70], radius: 15, count: 2 },
+        { center: [0, -70], radius: 15, count: 2 },
+        { center: [70, 0], radius: 15, count: 2 },
+        { center: [-70, 0], radius: 15, count: 2 },
+    ];
+    
+    let itemCounter = 0;
+    
+    for (const zone of itemZones) {
+        for (let i = 0; i < zone.count; i++) {
+            let attempts = 0;
+            let position;
+            
+            do {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * zone.radius;
+                position = {
+                    x: zone.center[0] + Math.cos(angle) * distance,
+                    z: zone.center[1] + Math.sin(angle) * distance
+                };
+                attempts++;
+            } while (isPositionInBlock(position.x, position.z) && attempts < 20);
+            
+            if (attempts >= 20) {
+                position = generateSafePosition();
+            }
+            
+            const itemId = `red_item_${itemCounter++}`;
+            redItems[itemId] = {
+                id: itemId,
+                x: position.x,
+                y: 2.0,
+                z: position.z,
+                zone: zone.center
+            };
+            
+            console.log(`アイテム配置: ${itemId} at (${position.x.toFixed(1)}, 2.0, ${position.z.toFixed(1)})`);
+        }
     }
     
-    console.log(`赤いアイテム強制生成完了: ${Object.keys(redItems).length}個`);
+    console.log(`赤いアイテム生成完了: ${Object.keys(redItems).length}個`);
 }
 
-// 初期生成（サーバー起動時に確実に実行）
-console.log('サーバー起動時の赤いアイテム生成...');
+// 初期生成
 generateRedItems();
 
-// 赤いアイテムの時間経過での自動出現システム
-const itemSpawnHistory = []; // 出現履歴
-const ITEM_RESPAWN_TIME = 30000; // 30秒後に再出現
+// 赤いアイテムの時間経過での自動出現システム（改良版）
+const itemSpawnHistory = [];
+const ITEM_RESPAWN_TIME = 25000; // 25秒後に再出現
 
-// 取得されたアイテムの位置を記録
 function recordItemPosition(itemId, position) {
     itemSpawnHistory.push({
         itemId: itemId,
@@ -109,36 +213,40 @@ function recordItemPosition(itemId, position) {
         collectedTime: Date.now()
     });
     
-    // 30秒後に同じ位置に再出現
+    // 25秒後に同じゾーンに再出現
     setTimeout(() => {
-        respawnItemAtPosition(itemId, position);
+        respawnItemInZone(itemId, position);
     }, ITEM_RESPAWN_TIME);
 }
 
-// 指定位置にアイテムを再出現
-function respawnItemAtPosition(originalId, position) {
-    // 新しいIDで再生成
+function respawnItemInZone(originalId, originalPosition) {
     const newItemId = `respawn_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // 元の位置から少しずらして配置
-    let newX = position.x + (Math.random() - 0.5) * 4;
-    let newZ = position.z + (Math.random() - 0.5) * 4;
+    // 同じゾーンの近くに配置
+    let newPos;
+    let attempts = 0;
     
-    // ブロックとの衝突を確認し、必要に応じて安全な位置を生成
-    if (isPositionInBlock(newX, newZ)) {
-        const safePos = generateSafePosition();
-        newX = safePos.x;
-        newZ = safePos.z;
+    do {
+        const offsetX = (Math.random() - 0.5) * 15;
+        const offsetZ = (Math.random() - 0.5) * 15;
+        newPos = {
+            x: originalPosition.x + offsetX,
+            z: originalPosition.z + offsetZ
+        };
+        attempts++;
+    } while (isPositionInBlock(newPos.x, newPos.z) && attempts < 10);
+    
+    if (attempts >= 10) {
+        newPos = generateSafePosition();
     }
     
     redItems[newItemId] = {
         id: newItemId,
-        x: newX,
-        y: position.y,
-        z: newZ,
+        x: newPos.x,
+        y: originalPosition.y,
+        z: newPos.z,
     };
     
-    // 全プレイヤーに新しいアイテム出現を通知
     broadcast({
         type: 'item_respawned',
         itemId: newItemId,
@@ -148,37 +256,27 @@ function respawnItemAtPosition(originalId, position) {
     console.log(`アイテム再出現: ${newItemId} at (${redItems[newItemId].x.toFixed(1)}, ${redItems[newItemId].y}, ${redItems[newItemId].z.toFixed(1)})`);
 }
 
-// 生成確認
-console.log(`生成された赤いアイテム一覧:`);
-for (const itemId in redItems) {
-    console.log(`  ${itemId}: (${redItems[itemId].x}, ${redItems[itemId].y}, ${redItems[itemId].z})`);
-}
-
-// 強制的に赤いアイテムを生成（フォールバック）
-if (Object.keys(redItems).length === 0) {
-    console.log('緊急: 赤いアイテムが0個なので強制生成します');
-    for (let i = 0; i < RED_ITEM_COUNT; i++) {
-        const itemId = `red_item_${i}`;
-        const position = generateSafePosition();
-        redItems[itemId] = {
-            id: itemId,
-            x: position.x,
-            y: 1.0,
-            z: position.z,
-        };
-    }
-    console.log(`強制生成完了: ${Object.keys(redItems).length}個`);
-}
-
-// 鬼の自動選択
+// 鬼の自動選択（改良版）
 function selectRandomOni() {
     const playerIds = Object.keys(players);
     if (playerIds.length > 0) {
-        const newOniId = playerIds[Math.floor(Math.random() * playerIds.length)];
+        // 鬼時間が最も短いプレイヤーを優先
+        let candidates = playerIds.map(id => ({
+            id: id,
+            oniTime: players[id].totalOniTime || 0
+        })).sort((a, b) => a.oniTime - b.oniTime);
+        
+        // 上位3人からランダム選択（フェアネス向上）
+        const topCandidates = candidates.slice(0, Math.min(3, candidates.length));
+        const newOniId = topCandidates[Math.floor(Math.random() * topCandidates.length)].id;
+        
         if (oniId !== newOniId) {
+            const oldOni = oniId;
             oniId = newOniId;
+            gameStats.totalOniChanges++;
+            
             broadcast({ type: 'oni_changed', oniId: oniId });
-            console.log(`新しい鬼が選ばれました: ${oniId}`);
+            console.log(`新しい鬼が選ばれました: ${oldOni} → ${oniId}`);
         }
     } else {
         oniId = null;
@@ -200,7 +298,7 @@ function canUpdatePlayer(playerId) {
     return false;
 }
 
-// 雪玉の当たり判定
+// 改良された雪玉の当たり判定
 function checkSnowballHit(snowballId, snowball) {
     if (!snowballs[snowballId]) return;
     
@@ -214,7 +312,7 @@ function checkSnowballHit(snowballId, snowball) {
             Math.pow(targetPos.z - oniPos.z, 2)
         );
         
-        if (distance < 3) { // 3ユニット以内で命中
+        if (distance < 4) { // 4ユニット以内で命中
             broadcast({ 
                 type: 'snowball_hit', 
                 snowballId: snowballId,
@@ -223,20 +321,30 @@ function checkSnowballHit(snowballId, snowball) {
             
             console.log(`雪玉が鬼 ${oniId} に命中！ゲームオーバー！`);
             
+            // 統計更新
+            gameStats.totalGames++;
+            
             // ゲームリセット（3秒後）
             setTimeout(() => {
                 resetGame();
             }, 3000);
+            
+            return true;
         }
     }
     
-    // 雪玉を削除
-    delete snowballs[snowballId];
+    return false;
 }
 
-// ゲームリセット
+// ゲームリセット（改良版）
 function resetGame() {
     console.log('ゲームをリセットします...');
+    
+    // プレイヤー統計をリセット
+    for (const playerId in players) {
+        players[playerId].score = 0;
+        players[playerId].itemsCollected = 0;
+    }
     
     // 全プレイヤーにリセット通知
     broadcast({ type: 'game_reset' });
@@ -254,6 +362,8 @@ function resetGame() {
         redItems: redItems,
         oniId: oniId
     });
+    
+    console.log('ゲームリセット完了');
 }
 
 // プレイヤーの安全な初期位置生成
@@ -264,6 +374,37 @@ function generateSafeSpawnPosition() {
         y: 1.7,
         z: position.z
     };
+}
+
+// 鬼交代の近接チェック（改良版）
+function checkOniProximity() {
+    if (!oniId || Object.keys(players).length < 2) return;
+    
+    const oniPos = players[oniId];
+    if (!oniPos) return;
+    
+    for (const playerId in players) {
+        if (playerId === oniId) continue;
+        
+        const player = players[playerId];
+        const distance = Math.sqrt(
+            Math.pow(oniPos.x - player.x, 2) + 
+            Math.pow(oniPos.z - player.z, 2)
+        );
+        
+        // 3ユニット以内で感嘆符表示
+        if (distance < 3) {
+            sendToPlayer(playerId, {
+                type: 'show_exclamation',
+                playerId: playerId
+            });
+        } else {
+            sendToPlayer(playerId, {
+                type: 'hide_exclamation',
+                playerId: playerId
+            });
+        }
+    }
 }
 
 // WebSocket接続処理
@@ -279,7 +420,10 @@ wss.on('connection', (ws, req) => {
         y: spawnPos.y, 
         z: spawnPos.z,
         lastUpdate: Date.now(),
-        score: 0
+        score: 0,
+        itemsCollected: 0,
+        totalOniTime: 0,
+        connectionTime: Date.now()
     };
     
     ws.playerId = id;
@@ -310,7 +454,6 @@ wss.on('connection', (ws, req) => {
                         oniId: oniId 
                     };
                     
-                    console.log('送信データ:', JSON.stringify(initData, null, 2));
                     ws.send(JSON.stringify(initData));
                     
                     console.log(`初期化データ送信完了: プレイヤー数=${Object.keys(players).length}, 赤いアイテム数=${Object.keys(redItems).length}`);
@@ -333,21 +476,26 @@ wss.on('connection', (ws, req) => {
                     
                     const player = players[data.id];
                     if (player && data.id === id) {
-                        // 位置データの検証（簡素化）
+                        // 位置データの検証
                         if (isValidPosition(data.x, data.y, data.z)) {
-                            player.x = parseFloat(data.x);
-                            player.y = parseFloat(data.y);
-                            player.z = parseFloat(data.z);
-                            player.lastUpdate = Date.now();
-                            
-                            // 他のプレイヤーに位置更新を送信
-                            broadcast({ 
-                                type: 'player_update', 
-                                id: data.id, 
-                                x: player.x, 
-                                y: player.y, 
-                                z: player.z 
-                            }, id);
+                            // サーバー側でも衝突チェック
+                            if (!isPositionInBlock(data.x, data.z, data.y)) {
+                                player.x = parseFloat(data.x);
+                                player.y = parseFloat(data.y);
+                                player.z = parseFloat(data.z);
+                                player.lastUpdate = Date.now();
+                                
+                                // 他のプレイヤーに位置更新を送信
+                                broadcast({ 
+                                    type: 'player_update', 
+                                    id: data.id, 
+                                    x: player.x, 
+                                    y: player.y, 
+                                    z: player.z 
+                                }, id);
+                            } else {
+                                console.log(`プレイヤー ${id} が建物内への移動を試行 - 拒否`);
+                            }
                         } else {
                             console.log(`不正な位置データを受信: ${id}`, data);
                         }
@@ -376,11 +524,14 @@ wss.on('connection', (ws, req) => {
                         
                         console.log(`赤いアイテム ${data.itemId} を削除し、スコアを更新します`);
                         
-                        // アイテム位置を記録（30秒後の再出現用）
+                        // アイテム位置を記録（25秒後の再出現用）
                         recordItemPosition(data.itemId, itemPosition);
                         
                         delete redItems[data.itemId];
                         players[id].score += 10;
+                        players[id].itemsCollected += 1;
+                        gameStats.totalItemsCollected++;
+                        
                         broadcast({ 
                             type: 'red_item_collected', 
                             itemId: data.itemId,
@@ -388,7 +539,6 @@ wss.on('connection', (ws, req) => {
                         });
                         console.log(`赤いアイテム ${data.itemId} が ${id} によって取得されました`);
                         console.log(`残り赤いアイテム数: ${Object.keys(redItems).length}`);
-                        console.log(`30秒後に位置 (${itemPosition.x.toFixed(1)}, ${itemPosition.y}, ${itemPosition.z.toFixed(1)}) に再出現予定`);
                         
                         // すべての赤いアイテムが取得された場合、新しいアイテムを生成
                         if (Object.keys(redItems).length === 0) {
@@ -418,6 +568,8 @@ wss.on('connection', (ws, req) => {
                         };
                         
                         snowballs[snowballId] = snowball;
+                        gameStats.totalSnowballsThrown++;
+                        
                         broadcast({ 
                             type: 'snowball_thrown', 
                             snowballId: snowballId,
@@ -426,10 +578,15 @@ wss.on('connection', (ws, req) => {
                         
                         console.log(`雪玉 ${snowballId} が ${id} によって投げられました`);
                         
-                        // 雪玉の当たり判定（簡易版）
+                        // 雪玉の当たり判定（改良版）
                         setTimeout(() => {
-                            checkSnowballHit(snowballId, snowball);
-                        }, 1000); // 1秒後に当たり判定
+                            if (checkSnowballHit(snowballId, snowball)) {
+                                // 命中した場合は既に処理済み
+                            } else {
+                                // 外れた場合は雪玉を削除
+                                delete snowballs[snowballId];
+                            }
+                        }, 2000);
                     }
                     break;
 
@@ -451,9 +608,17 @@ wss.on('connection', (ws, req) => {
 
                 case 'become_oni':
                     // ！マーククリックで鬼交代
-                    if (data.playerId !== oniId) {
+                    if (data.playerId !== oniId && players[data.playerId]) {
                         const oldOni = oniId;
+                        
+                        // 前の鬼の時間を記録
+                        if (players[oldOni]) {
+                            players[oldOni].totalOniTime += Date.now() - (players[oldOni].oniStartTime || Date.now());
+                        }
+                        
                         oniId = data.playerId;
+                        players[oniId].oniStartTime = Date.now();
+                        gameStats.totalOniChanges++;
                         
                         broadcast({ type: 'oni_changed', oniId: oniId });
                         console.log(`！マーククリックで鬼が交代しました: ${oldOni} → ${oniId}`);
@@ -465,25 +630,37 @@ wss.on('connection', (ws, req) => {
                     console.log(`鬼交代要求受信: 送信者=${data.id}, 鬼=${oniId}, ターゲット=${data.taggedId}`);
                     
                     if (data.id === oniId && data.id === id && players[data.taggedId]) {
-                        const oldOni = oniId;
-                        oniId = data.taggedId;
+                        // 距離チェック（チート防止）
+                        const oniPos = players[oniId];
+                        const targetPos = players[data.taggedId];
+                        const distance = Math.sqrt(
+                            Math.pow(oniPos.x - targetPos.x, 2) + 
+                            Math.pow(oniPos.z - targetPos.z, 2)
+                        );
                         
-                        // スコア更新
-                        if (players[oldOni]) {
-                            players[oldOni].score += 100;
+                        if (distance <= 5.0) { // 5ユニット以内でのみ有効
+                            const oldOni = oniId;
+                            
+                            // 前の鬼の時間を記録
+                            if (players[oldOni]) {
+                                players[oldOni].totalOniTime += Date.now() - (players[oldOni].oniStartTime || Date.now());
+                                players[oldOni].score += 100; // 鬼交代ボーナス
+                            }
+                            
+                            oniId = data.taggedId;
+                            players[oniId].oniStartTime = Date.now();
+                            gameStats.totalOniChanges++;
+                            
+                            // 全プレイヤーに鬼交代を通知
+                            const changeMessage = { type: 'oni_changed', oniId: oniId };
+                            broadcast(changeMessage);
+                            
+                            console.log(`鬼交代完了: ${oldOni} → ${oniId} (距離: ${distance.toFixed(2)})`);
+                        } else {
+                            console.log(`鬼交代要求却下: 距離が遠すぎます (${distance.toFixed(2)}ユニット)`);
                         }
-                        
-                        // 全プレイヤーに鬼交代を通知
-                        const changeMessage = { type: 'oni_changed', oniId: oniId };
-                        broadcast(changeMessage);
-                        
-                        console.log(`鬼交代完了: ${oldOni} → ${oniId}`);
-                        console.log(`交代メッセージ送信:`, changeMessage);
                     } else {
                         console.log(`鬼交代要求却下: 条件不一致`);
-                        console.log(`  送信者が鬼か: ${data.id === oniId}`);
-                        console.log(`  送信者が本人か: ${data.id === id}`);
-                        console.log(`  ターゲット存在: ${!!players[data.taggedId]}`);
                     }
                     break;
                     
@@ -501,7 +678,7 @@ wss.on('connection', (ws, req) => {
         
         // プレイヤーデータを削除
         delete players[id];
-        delete playerRanks[id]; // ランク情報も削除
+        delete playerRanks[id];
         playerUpdateLimits.delete(id);
         
         // 他のプレイヤーに切断を通知
@@ -527,6 +704,11 @@ wss.on('connection', (ws, req) => {
         ws.isAlive = true;
     });
 });
+
+// 定期的な鬼の近接チェック（2秒間隔）
+const proximityCheckInterval = setInterval(() => {
+    checkOniProximity();
+}, 2000);
 
 // 定期的なヘルスチェック（30秒間隔）
 const healthCheckInterval = setInterval(() => {
@@ -564,13 +746,20 @@ const cleanupInterval = setInterval(() => {
 
 // ゲーム統計の定期出力（10分間隔）
 const statsInterval = setInterval(() => {
+    const uptime = Math.floor((Date.now() - gameStats.startTime) / 60000);
+    
     console.log('=== ゲーム統計 ===');
+    console.log(`サーバー稼働時間: ${uptime}分`);
     console.log(`プレイヤー数: ${Object.keys(players).length}`);
     console.log(`赤いアイテム数: ${Object.keys(redItems).length}`);
     console.log(`雪玉数: ${Object.keys(snowballs).length}`);
     console.log(`現在の鬼: ${oniId}`);
     console.log(`アクティブ接続数: ${wss.clients.size}`);
     console.log(`ランク付きプレイヤー数: ${Object.keys(playerRanks).length}`);
+    console.log(`総ゲーム数: ${gameStats.totalGames}`);
+    console.log(`総鬼交代回数: ${gameStats.totalOniChanges}`);
+    console.log(`総雪玉投擲数: ${gameStats.totalSnowballsThrown}`);
+    console.log(`総アイテム収集数: ${gameStats.totalItemsCollected}`);
     
     // プレイヤースコアランキング
     const sortedPlayers = Object.values(players)
@@ -580,7 +769,8 @@ const statsInterval = setInterval(() => {
     console.log('=== トップ5プレイヤー ===');
     sortedPlayers.forEach((player, index) => {
         const rank = playerRanks[player.id] ? ` [${playerRanks[player.id]}]` : '';
-        console.log(`${index + 1}. ${player.id}${rank}: ${player.score}点`);
+        const oniTime = Math.floor((player.totalOniTime || 0) / 1000);
+        console.log(`${index + 1}. ${player.id}${rank}: ${player.score}点 (鬼時間: ${oniTime}秒, アイテム: ${player.itemsCollected}個)`);
     });
     console.log('========================');
 }, 10 * 60 * 1000);
@@ -589,6 +779,7 @@ const statsInterval = setInterval(() => {
 function gracefulShutdown() {
     console.log('サーバーをシャットダウンしています...');
     
+    clearInterval(proximityCheckInterval);
     clearInterval(healthCheckInterval);
     clearInterval(cleanupInterval);
     clearInterval(statsInterval);
@@ -629,7 +820,8 @@ server.listen(port, () => {
     console.log(`🎯 赤いアイテム数: ${RED_ITEM_COUNT}`);
     console.log(`❄️ 雪玉システム有効`);
     console.log(`👑 ランクシステム有効`);
-    console.log(`⚡ 移動速度: 0.7倍（56.0）`);
-    console.log(`🏗️ 建物削除済み`);
+    console.log(`🏗️ 構造化された建物配置`);
+    console.log(`⚡ 改良された鬼ごっこシステム`);
+    console.log(`📊 統計システム有効`);
     console.log(`=================================`);
 });

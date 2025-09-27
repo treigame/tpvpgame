@@ -298,158 +298,168 @@ scene.add(wall4);
 walls.push(wall4);
 blocks.push(wall4); // 衝突判定に追加
 
-// あなたが作成したカスタム建物
-function createCustomBuildings() {
-    // MyBuilding_1
-    const mybuilding_1Material = new THREE.MeshStandardMaterial({ 
+// 改良された建物配置システム
+function createStructuredBuildings() {
+    // 建物の基本設定
+    const buildingMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x8B4513,
         roughness: 0.3,
         metalness: 0.1
     });
-    const mybuilding_1 = new THREE.Mesh(
-        new THREE.BoxGeometry(10, 8, 10), 
-        mybuilding_1Material
-    );
-    mybuilding_1.position.set(0, 3, 0);
-    mybuilding_1.castShadow = true;
-    mybuilding_1.receiveShadow = true;
-    scene.add(mybuilding_1);
-    blocks.push(mybuilding_1);
-
-    // Tower_2
-    const tower_2Material = new THREE.MeshStandardMaterial({ 
-        color: 0x8B4513,
+    
+    const specialMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xFECE57,
         roughness: 0.3,
         metalness: 0.1
     });
-    const tower_2Group = new THREE.Group();
-    const sections = [
-        new THREE.Mesh(new THREE.BoxGeometry(10, 3.2, 10), tower_2Material),
-        new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 7), tower_2Material),
-        new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 5), tower_2Material)
-    ];
-    sections[0].position.y = -2.4;
-    sections[1].position.y = 0;
-    sections[2].position.y = 2.4;
-    sections.forEach(section => {
-        section.castShadow = true;
-        section.receiveShadow = true;
-        tower_2Group.add(section);
-        blocks.push(section);
-    });
-    tower_2Group.position.set(30, 3, 30);
-    scene.add(tower_2Group);
 
-    // Tower_3
-    const tower_3Material = new THREE.MeshStandardMaterial({ 
-        color: 0x8B4513,
-        roughness: 0.3,
-        metalness: 0.1
-    });
-    const tower_3Group = new THREE.Group();
-    const sections3 = [
-        new THREE.Mesh(new THREE.BoxGeometry(10, 3.2, 10), tower_3Material),
-        new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 7), tower_3Material),
-        new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 5), tower_3Material)
-    ];
-    sections3[0].position.y = -2.4;
-    sections3[1].position.y = 0;
-    sections3[2].position.y = 2.4;
-    sections3.forEach(section => {
-        section.castShadow = true;
-        section.receiveShadow = true;
-        tower_3Group.add(section);
-        blocks.push(section);
-    });
-    tower_3Group.position.set(10, 3, 5);
-    scene.add(tower_3Group);
-
-    // Tower_4 (Hollow)
-    const tower_4Material = new THREE.MeshStandardMaterial({ 
-        color: 0x8B4513,
-        roughness: 0.3,
-        metalness: 0.1
-    });
-    const tower_4Group = new THREE.Group();
-    // Walls
-    const walls4 = [
-        new THREE.Mesh(new THREE.BoxGeometry(10, 8, 0.5), tower_4Material),
-        new THREE.Mesh(new THREE.BoxGeometry(10, 8, 0.5), tower_4Material),
-        new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), tower_4Material),
-        new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 10), tower_4Material)
-    ];
-    walls4[0].position.set(0, 0, 4.75);
-    walls4[1].position.set(0, 0, -4.75);
-    walls4[2].position.set(4.75, 0, 0);
-    walls4[3].position.set(-4.75, 0, 0);
-    walls4.forEach(wall => {
-        wall.castShadow = true;
-        wall.receiveShadow = true;
-        tower_4Group.add(wall);
-        blocks.push(wall);
-    });
-    tower_4Group.position.set(-15, 3, 5);
-    scene.add(tower_4Group);
-
-    // 残りの建物を追加
-    const buildingData = [
-        { name: 'tower_5', pos: [-15, 3, -20], color: 0x8B4513 },
-        { name: 'tower_6', pos: [5, 3, -20], color: 0x8B4513 },
-        { name: 'tower_7', pos: [-80, 3, -60], color: 0x8B4513 },
-        { name: 'tower_8', pos: [-10, 3, -65], color: 0x8B4513 },
-        { name: 'tower_9', pos: [-45, 3, -10], color: 0x8B4513 },
-        { name: 'tower_10', pos: [-35, 3, 35], color: 0x8B4513 },
-        { name: 'tower_11', pos: [20, 3, 35], color: 0x8B4513 },
-        { name: 'tower_12', pos: [50, 3, -20], color: 0xFECE57 }, // 黄色
-        { name: 'mybuilding_13', pos: [0, 3, 15], color: 0x8B4513 },
-        { name: 'mybuilding_14', pos: [-5, 3, -10], color: 0x8B4513 },
-        { name: 'mybuilding_15', pos: [-15, 3, -5], color: 0x8B4513 },
-        { name: 'mybuilding_16', pos: [-10, 3, 20], color: 0x8B4513 },
-        { name: 'mybuilding_17', pos: [-5, 3, 40], color: 0x8B4513 },
-        { name: 'mybuilding_18', pos: [-20, 3, 35], color: 0x8B4513 },
-        { name: 'mybuilding_19', pos: [-25, 3, 20], color: 0x8B4513 },
-        { name: 'mybuilding_20', pos: [-30, 3, -5], color: 0x8B4513 },
-        { name: 'mybuilding_21', pos: [-30, 3, 5], color: 0x8B4513 },
-        { name: 'mybuilding_22', pos: [-5, 3, 5], color: 0x8B4513 },
-        { name: 'mybuilding_23', pos: [-5, 3, 0], color: 0x8B4513 },
-        { name: 'mybuilding_24', pos: [-20, 3, 15], color: 0x8B4513 },
-        { name: 'mybuilding_25', pos: [5, 3, 20], color: 0x8B4513 },
-        { name: 'mybuilding_26', pos: [0, 3, 25], color: 0x8B4513 },
-        { name: 'mybuilding_27', pos: [15, 3, 30], color: 0x8B4513 },
-        { name: 'mybuilding_28', pos: [15, 3, 15], color: 0x8B4513 },
-        { name: 'mybuilding_29', pos: [25, 3, 0], color: 0x8B4513 },
-        { name: 'mybuilding_30', pos: [75, 3, 20], color: 0x8B4513 },
-        { name: 'mybuilding_31', pos: [70, 3, 55], color: 0x8B4513 },
-        { name: 'mybuilding_32', pos: [40, 3, 60], color: 0x8B4513 },
-        { name: 'mybuilding_33', pos: [-5, 3, 65], color: 0x8B4513 },
-        { name: 'mybuilding_34', pos: [-35, 3, 60], color: 0x8B4513 },
-        { name: 'mybuilding_35', pos: [-65, 3, 45], color: 0x8B4513 },
-        { name: 'mybuilding_36', pos: [-70, 3, 20], color: 0x8B4513 },
-        { name: 'mybuilding_37', pos: [-70, 3, -15], color: 0x8B4513 },
-        { name: 'mybuilding_42', pos: [-45, 3, 80], color: 0x8B4513 },
-        { name: 'mybuilding_43', pos: [-75, 3, 75], color: 0x8B4513 }
+    // 中央広場の建物群
+    const centralBuildings = [
+        { pos: [0, 4, 0], size: [12, 8, 12], type: 'central_tower' },
+        { pos: [20, 3, 20], size: [8, 6, 8], type: 'corner_building' },
+        { pos: [-20, 3, 20], size: [8, 6, 8], type: 'corner_building' },
+        { pos: [20, 3, -20], size: [8, 6, 8], type: 'corner_building' },
+        { pos: [-20, 3, -20], size: [8, 6, 8], type: 'corner_building' },
     ];
 
-    buildingData.forEach(building => {
-        const material = new THREE.MeshStandardMaterial({ 
-            color: building.color,
-            roughness: 0.3,
-            metalness: 0.1
-        });
+    // 外周エリアの建物
+    const outerBuildings = [
+        // 北側エリア
+        { pos: [0, 3, 60], size: [15, 6, 10], type: 'long_building' },
+        { pos: [30, 3, 70], size: [10, 8, 10], type: 'tower' },
+        { pos: [-30, 3, 70], size: [10, 8, 10], type: 'tower' },
         
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), material);
+        // 南側エリア
+        { pos: [0, 3, -60], size: [15, 6, 10], type: 'long_building' },
+        { pos: [40, 3, -65], size: [8, 10, 8], type: 'tall_tower' },
+        { pos: [-40, 3, -65], size: [8, 10, 8], type: 'tall_tower' },
+        
+        // 東側エリア
+        { pos: [70, 3, 0], size: [10, 6, 20], type: 'wall_building' },
+        { pos: [60, 3, 30], size: [12, 5, 8], type: 'platform' },
+        { pos: [60, 3, -30], size: [12, 5, 8], type: 'platform' },
+        
+        // 西側エリア
+        { pos: [-70, 3, 0], size: [10, 6, 20], type: 'wall_building' },
+        { pos: [-60, 3, 30], size: [12, 5, 8], type: 'platform' },
+        { pos: [-60, 3, -30], size: [12, 5, 8], type: 'platform' },
+    ];
+
+    // 迷路風の小さな建物群
+    const mazeBuildings = [
+        // 北東エリア
+        { pos: [45, 2, 45], size: [6, 4, 6], type: 'small_block' },
+        { pos: [55, 2, 35], size: [6, 4, 6], type: 'small_block' },
+        { pos: [35, 2, 55], size: [6, 4, 6], type: 'small_block' },
+        
+        // 北西エリア
+        { pos: [-45, 2, 45], size: [6, 4, 6], type: 'small_block' },
+        { pos: [-55, 2, 35], size: [6, 4, 6], type: 'small_block' },
+        { pos: [-35, 2, 55], size: [6, 4, 6], type: 'small_block' },
+        
+        // 南東エリア
+        { pos: [45, 2, -45], size: [6, 4, 6], type: 'small_block' },
+        { pos: [55, 2, -35], size: [6, 4, 6], type: 'small_block' },
+        { pos: [35, 2, -55], size: [6, 4, 6], type: 'small_block' },
+        
+        // 南西エリア
+        { pos: [-45, 2, -45], size: [6, 4, 6], type: 'small_block' },
+        { pos: [-55, 2, -35], size: [6, 4, 6], type: 'small_block' },
+        { pos: [-35, 2, -55], size: [6, 4, 6], type: 'small_block' },
+    ];
+
+    // 特殊建物（黄色い目標建物）
+    const specialBuildings = [
+        { pos: [0, 6, 40], size: [8, 12, 8], type: 'special_tower', material: specialMaterial },
+        { pos: [0, 6, -40], size: [8, 12, 8], type: 'special_tower', material: specialMaterial },
+    ];
+
+    // 全建物を作成
+    const allBuildings = [
+        ...centralBuildings,
+        ...outerBuildings,
+        ...mazeBuildings,
+        ...specialBuildings
+    ];
+
+    allBuildings.forEach((building, index) => {
+        const material = building.material || buildingMaterial;
+        const geometry = new THREE.BoxGeometry(...building.size);
+        const mesh = new THREE.Mesh(geometry, material);
+        
         mesh.position.set(...building.pos);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
+        mesh.userData.buildingType = building.type;
+        mesh.userData.buildingId = `building_${index}`;
+        
         scene.add(mesh);
         blocks.push(mesh);
     });
 
-    console.log('Custom buildings created: 43 buildings');
+    // 橋や通路の追加
+    createBridgesAndPlatforms();
+    
+    console.log(`構造化された建物を作成しました: ${allBuildings.length}個の建物`);
 }
 
-// カスタム建物を作成
-createCustomBuildings();
+// 橋や通路の作成
+function createBridgesAndPlatforms() {
+    const bridgeMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x654321,
+        roughness: 0.6,
+        metalness: 0.2
+    });
+
+    // 空中橋
+    const bridges = [
+        { pos: [0, 8, 0], size: [30, 1, 4], rotation: [0, 0, 0] },
+        { pos: [0, 8, 0], size: [4, 1, 30], rotation: [0, Math.PI/2, 0] },
+        { pos: [40, 6, 0], size: [20, 1, 3], rotation: [0, Math.PI/2, 0] },
+        { pos: [-40, 6, 0], size: [20, 1, 3], rotation: [0, Math.PI/2, 0] },
+    ];
+
+    bridges.forEach((bridge, index) => {
+        const geometry = new THREE.BoxGeometry(...bridge.size);
+        const mesh = new THREE.Mesh(geometry, bridgeMaterial);
+        
+        mesh.position.set(...bridge.pos);
+        mesh.rotation.set(...bridge.rotation);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData.buildingType = 'bridge';
+        mesh.userData.buildingId = `bridge_${index}`;
+        
+        scene.add(mesh);
+        blocks.push(mesh);
+    });
+
+    // 階段やスロープ
+    const ramps = [
+        { pos: [15, 2, 15], size: [8, 2, 8], rotation: [0, 0, 0] },
+        { pos: [-15, 2, 15], size: [8, 2, 8], rotation: [0, 0, 0] },
+        { pos: [15, 2, -15], size: [8, 2, 8], rotation: [0, 0, 0] },
+        { pos: [-15, 2, -15], size: [8, 2, 8], rotation: [0, 0, 0] },
+    ];
+
+    ramps.forEach((ramp, index) => {
+        const geometry = new THREE.BoxGeometry(...ramp.size);
+        const mesh = new THREE.Mesh(geometry, bridgeMaterial);
+        
+        mesh.position.set(...ramp.pos);
+        mesh.rotation.set(...ramp.rotation);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData.buildingType = 'ramp';
+        mesh.userData.buildingId = `ramp_${index}`;
+        
+        scene.add(mesh);
+        blocks.push(mesh);
+    });
+}
+
+// 構造化された建物を作成
+createStructuredBuildings();
 
 // UIエレメントの作成
 function createUI() {
@@ -493,7 +503,7 @@ function createUI() {
             </div>
         </div>
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
-            <div>W: 後退 | S: 前進 | A: 右移動 | D: 左移動 | Space: ジャンプ</div>
+            <div>W: 前進 | S: 後退 | A: 左移動 | D: 右移動 | Space: ジャンプ</div>
             <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
             <div id="owner-controls" style="display: none; color: #gold;">
                 F: フライト切替 | Space: 上昇 | Shift: 下降
@@ -1116,16 +1126,16 @@ function setupJoystickControls() {
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         
         if (distance <= maxDistance) {
-            joystickPosition.x = -deltaX / maxDistance;
-            joystickPosition.y = -deltaY / maxDistance;
+            joystickPosition.x = deltaX / maxDistance;
+            joystickPosition.y = deltaY / maxDistance;
             knob.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
         } else {
             const angle = Math.atan2(deltaY, deltaX);
             const clampedX = Math.cos(angle) * maxDistance;
             const clampedY = Math.sin(angle) * maxDistance;
             
-            joystickPosition.x = -clampedX / maxDistance;
-            joystickPosition.y = -clampedY / maxDistance;
+            joystickPosition.x = clampedX / maxDistance;
+            joystickPosition.y = clampedY / maxDistance;
             knob.style.transform = `translate(calc(-50% + ${clampedX}px), calc(-50% + ${clampedY}px))`;
         }
         
@@ -1286,7 +1296,7 @@ function throwSnowball() {
     updateUI();
 }
 
-// キーボードイベント
+// キーボードイベント（WASD移動を正しく修正）
 const keys = {};
 
 document.addEventListener('keydown', (event) => {
@@ -1296,16 +1306,16 @@ document.addEventListener('keydown', (event) => {
     
     switch (event.code) {
         case 'KeyW':
-            moveBackward = true;
+            moveForward = true; // 前進
             break;
         case 'KeyA':
-            moveRight = true;
+            moveLeft = true; // 左移動
             break;
         case 'KeyS':
-            moveForward = true;
+            moveBackward = true; // 後退
             break;
         case 'KeyD':
-            moveLeft = true;
+            moveRight = true; // 右移動
             break;
         case 'Space':
             event.preventDefault();
@@ -1345,16 +1355,16 @@ document.addEventListener('keyup', (event) => {
     
     switch (event.code) {
         case 'KeyW':
-            moveBackward = false;
-            break;
-        case 'KeyA':
-            moveRight = false;
-            break;
-        case 'KeyS':
             moveForward = false;
             break;
-        case 'KeyD':
+        case 'KeyA':
             moveLeft = false;
+            break;
+        case 'KeyS':
+            moveBackward = false;
+            break;
+        case 'KeyD':
+            moveRight = false;
             break;
     }
 });
@@ -1630,7 +1640,7 @@ function checkRedItemCollection() {
     }
 }
 
-// ゲームループ
+// ゲームループ（改良された移動システム）
 function animate() {
     requestAnimationFrame(animate);
     
@@ -1639,7 +1649,7 @@ function animate() {
         return;
     }
     
-    // プレイヤー移動の処理
+    // プレイヤー移動の処理（WASD修正版）
     direction.z = Number(moveForward) - Number(moveBackward);
     direction.x = Number(moveRight) - Number(moveLeft);
     direction.normalize();
@@ -1651,9 +1661,10 @@ function animate() {
         direction.normalize();
     }
     
-    const speed = 15.0;
+    const speed = 12.0; // 移動速度を調整
     const currentPosition = controls.getObject().position.clone();
     
+    // 前後移動
     if (moveForward || moveBackward || joystickActive) {
         const moveVector = new THREE.Vector3();
         controls.getObject().getWorldDirection(moveVector);
@@ -1669,6 +1680,7 @@ function animate() {
         }
     }
     
+    // 左右移動
     if (moveLeft || moveRight || joystickActive) {
         const strafeVector = new THREE.Vector3();
         controls.getObject().getWorldDirection(strafeVector);
