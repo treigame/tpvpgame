@@ -12,6 +12,12 @@ let isConnected = false;
 let canThrowSnowball = false; // 雪玉を投げられるかどうか
 let showExclamation = false; // ！マークを表示するかどうか
 
+// ゲーム状態管理
+let gameStarted = false;
+let gameCountdown = -1;
+let waitingForPlayers = false;
+let isSpawned = false;
+
 // OWNER特権とフライトシステム
 let playerRank = null; // プレイヤーのランク
 let isFlying = false; // フライト状態
@@ -47,15 +53,30 @@ ws.onmessage = (event) => {
     if (data.type === 'init') {
         myId = data.id;
         oniId = data.oniId;
+        gameStarted = data.gameStarted || false;
+        waitingForPlayers = data.waitingForPlayers || false;
+        
         console.log(`割り当てられたID: ${myId}`);
-        console.log(`受信した赤いアイテム数: ${Object.keys(data.redItems || {}).length}`);
+        console.log(`ゲーム状態: 開始=${gameStarted}, 待機=${waitingForPlayers}`);
         
         // UI初期化
         createUI();
         createSettingsUI();
         
+        // ゲーム状態に応じてプレイヤーを配置
+        if (!gameStarted && waitingForPlayers) {
+            // 待機状態 - 空中に固定
+            controls.getObject().position.set(0, 15, 0);
+            isSpawned = false;
+            showMessage('他のプレイヤーを待っています...', 'info', 3000);
+        } else if (gameStarted) {
+            // ゲーム進行中 - 通常スポーン
+            controls.getObject().position.set(0, 1.7, 0);
+            isSpawned = true;
+        }
+        
         // 鬼の開始時間を記録
-        if (myId === oniId) {
+        if (myId === oniId && gameStarted) {
             gameState.oniStartTime = Date.now();
             addSword(camera);
         }
@@ -66,7 +87,7 @@ ws.onmessage = (event) => {
             }
         }
         
-        // 赤いアイテムの作成（デバッグ情報付き）
+        // 赤いアイテムの作成
         console.log('赤いアイテム作成開始...');
         for (const id in data.redItems || {}) {
             console.log(`赤いアイテム作成: ${id}`, data.redItems[id]);
@@ -75,6 +96,19 @@ ws.onmessage = (event) => {
         console.log(`赤いアイテム作成完了: ${Object.keys(redItems).length}個`);
         
         updateUI();
+    } else if (data.type === 'waiting_for_players') {
+        waitingForPlayers = true;
+        gameStarted = false;
+        // 空中に固定
+        controls.getObject().position.set(0, 15, 0);
+        isSpawned = false;
+        showMessage(`プレイヤー待機中... (${data.currentPlayers}/3)`, 'info', 2000);
+    } else if (data.type === 'game_countdown') {
+        gameCountdown = data.countdown;
+        showCountdown(data.countdown);
+        if (data.countdown === 0) {
+            startGame();
+        }
     } else if (data.type === 'player_update') {
         if (data.id !== myId) {
             if (!players[data.id]) {
@@ -196,6 +230,29 @@ ws.onerror = (error) => {
     isConnected = false;
 };
 
+// カウントダウン表示
+function showCountdown(count) {
+    if (count > 0) {
+        showMessage(`Game will start in ${count}`, 'info', 1000);
+    } else {
+        showMessage('START!', 'success', 1500);
+    }
+}
+
+// ゲーム開始
+function startGame() {
+    gameStarted = true;
+    gameCountdown = -1;
+    waitingForPlayers = false;
+    
+    // 空中から落下開始
+    controls.getObject().position.y = 15;
+    isSpawned = true;
+    
+    showMessage('ゲーム開始！', 'success', 2000);
+    console.log('ゲームが開始されました');
+}
+
 // Three.jsシーンのセットアップ
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -254,7 +311,7 @@ scene.add(plane);
 // 外周の壁と障害物の作成
 const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
-const WALL_THICKNESS = 4; // 壁の厚さを4ユニットに増加（貫通防止）
+const WALL_THICKNESS = 4;
 
 const wallMaterial = new THREE.MeshStandardMaterial({ 
     color: 0xffffff,
@@ -263,16 +320,16 @@ const wallMaterial = new THREE.MeshStandardMaterial({
 });
 
 const walls = [];
-const blocks = []; // ブロック衝突判定用（壁も含む）
+const blocks = [];
 
-// 外周の壁（厚くして貫通を防ぐ）
+// 外周の壁
 const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, WALL_THICKNESS), wallMaterial);
 wall1.position.set(0, (WALL_HEIGHT / 2) - 1, -WALL_SIZE / 2);
 wall1.receiveShadow = true;
 wall1.castShadow = true;
 scene.add(wall1);
 walls.push(wall1);
-blocks.push(wall1); // 衝突判定に追加
+blocks.push(wall1);
 
 const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, WALL_THICKNESS), wallMaterial);
 wall2.position.set(0, (WALL_HEIGHT / 2) - 1, WALL_SIZE / 2);
@@ -280,7 +337,7 @@ wall2.receiveShadow = true;
 wall2.castShadow = true;
 scene.add(wall2);
 walls.push(wall2);
-blocks.push(wall2); // 衝突判定に追加
+blocks.push(wall2);
 
 const wall3 = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_SIZE), wallMaterial);
 wall3.position.set(-WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
@@ -288,7 +345,7 @@ wall3.receiveShadow = true;
 wall3.castShadow = true;
 scene.add(wall3);
 walls.push(wall3);
-blocks.push(wall3); // 衝突判定に追加
+blocks.push(wall3);
 
 const wall4 = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_SIZE), wallMaterial);
 wall4.position.set(WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
@@ -296,11 +353,10 @@ wall4.receiveShadow = true;
 wall4.castShadow = true;
 scene.add(wall4);
 walls.push(wall4);
-blocks.push(wall4); // 衝突判定に追加
+blocks.push(wall4);
 
 // 改良された建物配置システム
 function createStructuredBuildings() {
-    // 建物の基本設定
     const buildingMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x8B4513,
         roughness: 0.3,
@@ -324,22 +380,15 @@ function createStructuredBuildings() {
 
     // 外周エリアの建物
     const outerBuildings = [
-        // 北側エリア
         { pos: [0, 3, 60], size: [15, 6, 10], type: 'long_building' },
         { pos: [30, 3, 70], size: [10, 8, 10], type: 'tower' },
         { pos: [-30, 3, 70], size: [10, 8, 10], type: 'tower' },
-        
-        // 南側エリア
         { pos: [0, 3, -60], size: [15, 6, 10], type: 'long_building' },
         { pos: [40, 3, -65], size: [8, 10, 8], type: 'tall_tower' },
         { pos: [-40, 3, -65], size: [8, 10, 8], type: 'tall_tower' },
-        
-        // 東側エリア
         { pos: [70, 3, 0], size: [10, 6, 20], type: 'wall_building' },
         { pos: [60, 3, 30], size: [12, 5, 8], type: 'platform' },
         { pos: [60, 3, -30], size: [12, 5, 8], type: 'platform' },
-        
-        // 西側エリア
         { pos: [-70, 3, 0], size: [10, 6, 20], type: 'wall_building' },
         { pos: [-60, 3, 30], size: [12, 5, 8], type: 'platform' },
         { pos: [-60, 3, -30], size: [12, 5, 8], type: 'platform' },
@@ -347,28 +396,21 @@ function createStructuredBuildings() {
 
     // 迷路風の小さな建物群
     const mazeBuildings = [
-        // 北東エリア
         { pos: [45, 2, 45], size: [6, 4, 6], type: 'small_block' },
         { pos: [55, 2, 35], size: [6, 4, 6], type: 'small_block' },
         { pos: [35, 2, 55], size: [6, 4, 6], type: 'small_block' },
-        
-        // 北西エリア
         { pos: [-45, 2, 45], size: [6, 4, 6], type: 'small_block' },
         { pos: [-55, 2, 35], size: [6, 4, 6], type: 'small_block' },
         { pos: [-35, 2, 55], size: [6, 4, 6], type: 'small_block' },
-        
-        // 南東エリア
         { pos: [45, 2, -45], size: [6, 4, 6], type: 'small_block' },
         { pos: [55, 2, -35], size: [6, 4, 6], type: 'small_block' },
         { pos: [35, 2, -55], size: [6, 4, 6], type: 'small_block' },
-        
-        // 南西エリア
         { pos: [-45, 2, -45], size: [6, 4, 6], type: 'small_block' },
         { pos: [-55, 2, -35], size: [6, 4, 6], type: 'small_block' },
         { pos: [-35, 2, -55], size: [6, 4, 6], type: 'small_block' },
     ];
 
-    // 特殊建物（黄色い目標建物）
+    // 特殊建物
     const specialBuildings = [
         { pos: [0, 6, 40], size: [8, 12, 8], type: 'special_tower', material: specialMaterial },
         { pos: [0, 6, -40], size: [8, 12, 8], type: 'special_tower', material: specialMaterial },
@@ -397,65 +439,7 @@ function createStructuredBuildings() {
         blocks.push(mesh);
     });
 
-    // 橋や通路の追加
-    createBridgesAndPlatforms();
-    
     console.log(`構造化された建物を作成しました: ${allBuildings.length}個の建物`);
-}
-
-// 橋や通路の作成
-function createBridgesAndPlatforms() {
-    const bridgeMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x654321,
-        roughness: 0.6,
-        metalness: 0.2
-    });
-
-    // 空中橋
-    const bridges = [
-        { pos: [0, 8, 0], size: [30, 1, 4], rotation: [0, 0, 0] },
-        { pos: [0, 8, 0], size: [4, 1, 30], rotation: [0, Math.PI/2, 0] },
-        { pos: [40, 6, 0], size: [20, 1, 3], rotation: [0, Math.PI/2, 0] },
-        { pos: [-40, 6, 0], size: [20, 1, 3], rotation: [0, Math.PI/2, 0] },
-    ];
-
-    bridges.forEach((bridge, index) => {
-        const geometry = new THREE.BoxGeometry(...bridge.size);
-        const mesh = new THREE.Mesh(geometry, bridgeMaterial);
-        
-        mesh.position.set(...bridge.pos);
-        mesh.rotation.set(...bridge.rotation);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.userData.buildingType = 'bridge';
-        mesh.userData.buildingId = `bridge_${index}`;
-        
-        scene.add(mesh);
-        blocks.push(mesh);
-    });
-
-    // 階段やスロープ
-    const ramps = [
-        { pos: [15, 2, 15], size: [8, 2, 8], rotation: [0, 0, 0] },
-        { pos: [-15, 2, 15], size: [8, 2, 8], rotation: [0, 0, 0] },
-        { pos: [15, 2, -15], size: [8, 2, 8], rotation: [0, 0, 0] },
-        { pos: [-15, 2, -15], size: [8, 2, 8], rotation: [0, 0, 0] },
-    ];
-
-    ramps.forEach((ramp, index) => {
-        const geometry = new THREE.BoxGeometry(...ramp.size);
-        const mesh = new THREE.Mesh(geometry, bridgeMaterial);
-        
-        mesh.position.set(...ramp.pos);
-        mesh.rotation.set(...ramp.rotation);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.userData.buildingType = 'ramp';
-        mesh.userData.buildingId = `ramp_${index}`;
-        
-        scene.add(mesh);
-        blocks.push(mesh);
-    });
 }
 
 // 構造化された建物を作成
@@ -506,9 +490,9 @@ function createUI() {
             <div>W: 前進 | S: 後退 | A: 左移動 | D: 右移動 | Space: ジャンプ</div>
             <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
             <div id="owner-controls" style="display: none; color: #gold;">
-                F: フライト切替 | Space: 上昇 | Shift: 下降
+                F: フライト切替 | フライト中: Space: 上昇 | Shift: 下降 | WASD: 水平移動
             </div>
-            <div>🔴赤いアイテム8個で雪玉投擲可能 🧱建物探索</div>
+            <div>🔴赤いアイテム8個で雪玉投擲可能</div>
         </div>
     `;
     
@@ -629,7 +613,6 @@ function addSword(mesh) {
     handle.castShadow = true;
     swordGroup.add(handle);
     
-    // 右下から持つ位置に変更
     swordGroup.position.set(1.0, -1.2, -0.5);
     swordGroup.rotation.x = Math.PI / 4;
     swordGroup.rotation.y = -Math.PI / 6;
@@ -1195,17 +1178,17 @@ let swordSwinging = false;
 document.addEventListener('click', () => {
     if (!document.pointerLockElement) {
         document.body.requestPointerLock();
-    } else if (myId === oniId && !swordSwinging) {
+    } else if (myId === oniId && !swordSwinging && gameStarted) {
         // 鬼の場合は剣を振る
         swingSword();
-    } else if (canThrowSnowball && myId !== oniId) {
+    } else if (canThrowSnowball && myId !== oniId && gameStarted) {
         // 逃走者で雪玉投擲可能な場合
         throwSnowball();
     }
 });
 
 document.addEventListener('touchstart', (event) => {
-    if (myId === oniId && !swordSwinging) {
+    if (myId === oniId && !swordSwinging && gameStarted) {
         event.preventDefault();
         swingSword();
     }
@@ -1296,7 +1279,7 @@ function throwSnowball() {
     updateUI();
 }
 
-// キーボードイベント（WASD移動を正しく修正）
+// キーボードイベント（完全修正版）
 const keys = {};
 
 document.addEventListener('keydown', (event) => {
@@ -1306,23 +1289,23 @@ document.addEventListener('keydown', (event) => {
     
     switch (event.code) {
         case 'KeyW':
-            moveForward = true; // 前進
+            moveForward = true; // W = 前進
             break;
         case 'KeyA':
-            moveLeft = true; // 左移動
+            moveLeft = true; // A = 左移動
             break;
         case 'KeyS':
-            moveBackward = true; // 後退
+            moveBackward = true; // S = 後退
             break;
         case 'KeyD':
-            moveRight = true; // 右移動
+            moveRight = true; // D = 右移動
             break;
         case 'Space':
             event.preventDefault();
             if (flightEnabled && isFlying) {
                 // フライト中は上昇
                 velocity.y += 15;
-            } else if (canJump) {
+            } else if (canJump && gameStarted && isSpawned) {
                 // 通常ジャンプ
                 velocity.y += 18;
                 canJump = false;
@@ -1622,6 +1605,8 @@ function checkCollisions(targetPosition) {
 
 // 赤いアイテムの収集チェック
 function checkRedItemCollection() {
+    if (!gameStarted) return;
+    
     const playerPosition = controls.getObject().position;
     const collectionDistance = 2.0;
     
@@ -1640,7 +1625,7 @@ function checkRedItemCollection() {
     }
 }
 
-// ゲームループ（改良された移動システム）
+// ゲームループ（完全修正版）
 function animate() {
     requestAnimationFrame(animate);
     
@@ -1649,23 +1634,43 @@ function animate() {
         return;
     }
     
-    // プレイヤー移動の処理（WASD修正版）
-    direction.z = Number(moveForward) - Number(moveBackward);
-    direction.x = Number(moveRight) - Number(moveLeft);
-    direction.normalize();
+    // ゲーム開始前は移動を無効化
+    if (!gameStarted || !isSpawned) {
+        // 待機中は空中に固定
+        if (waitingForPlayers) {
+            controls.getObject().position.y = 15;
+            velocity.set(0, 0, 0);
+        }
+        renderer.render(scene, camera);
+        updateUI();
+        return;
+    }
+    
+    // プレイヤー移動の処理（完全修正版）
+    direction.set(0, 0, 0);
+    
+    // WASD移動（正しい方向）
+    if (moveForward) direction.z -= 1; // W = 前進（カメラの前方向）
+    if (moveBackward) direction.z += 1; // S = 後退（カメラの後方向）
+    if (moveLeft) direction.x -= 1; // A = 左移動
+    if (moveRight) direction.x += 1; // D = 右移動
     
     // ジョイスティック入力の処理
     if (joystickActive) {
         direction.x += joystickPosition.x;
         direction.z += joystickPosition.y;
+    }
+    
+    // 方向の正規化
+    if (direction.length() > 0) {
         direction.normalize();
     }
     
-    const speed = 12.0; // 移動速度を調整
+    const speed = 15.0; // 移動速度
     const currentPosition = controls.getObject().position.clone();
     
-    // 前後移動
-    if (moveForward || moveBackward || joystickActive) {
+    // 前後移動（カメラの前方向基準）
+    if (direction.z !== 0) {
         const moveVector = new THREE.Vector3();
         controls.getObject().getWorldDirection(moveVector);
         moveVector.y = 0;
@@ -1676,12 +1681,16 @@ function animate() {
         newPosition.y = currentPosition.y;
         
         if (!checkCollisions(newPosition)) {
-            velocity.z -= direction.z * speed;
+            velocity.z = direction.z * speed;
+        } else {
+            velocity.z = 0;
         }
+    } else {
+        velocity.z *= 0.8;
     }
     
-    // 左右移動
-    if (moveLeft || moveRight || joystickActive) {
+    // 左右移動（カメラの右方向基準）
+    if (direction.x !== 0) {
         const strafeVector = new THREE.Vector3();
         controls.getObject().getWorldDirection(strafeVector);
         strafeVector.cross(controls.getObject().up);
@@ -1693,8 +1702,12 @@ function animate() {
         newPosition.y = currentPosition.y;
         
         if (!checkCollisions(newPosition)) {
-            velocity.x -= direction.x * speed;
+            velocity.x = direction.x * speed;
+        } else {
+            velocity.x = 0;
         }
+    } else {
+        velocity.x *= 0.8;
     }
     
     // 重力とジャンプの処理
@@ -1711,22 +1724,66 @@ function animate() {
         velocity.y *= 0.9; // 減衰
     }
     
-    // 最終的な位置更新
-    const finalPosition = controls.getObject().position.clone();
+    // 最終的な位置更新（フライト中は異なる計算）
     const deltaTime = 1/60;
     
-    finalPosition.x += velocity.x * deltaTime;
-    finalPosition.z += velocity.z * deltaTime;
-    
-    if (!checkCollisions(finalPosition)) {
-        controls.getObject().position.copy(finalPosition);
+    if (isFlying && flightEnabled) {
+        // フライト中はWASDで水平移動
+        const currentPos = controls.getObject().position.clone();
+        
+        if (direction.z !== 0) {
+            const moveVector = new THREE.Vector3();
+            controls.getObject().getWorldDirection(moveVector);
+            moveVector.y = 0;
+            moveVector.normalize();
+            moveVector.multiplyScalar(direction.z * speed * deltaTime);
+            currentPos.add(moveVector);
+        }
+        
+        if (direction.x !== 0) {
+            const strafeVector = new THREE.Vector3();
+            controls.getObject().getWorldDirection(strafeVector);
+            strafeVector.cross(controls.getObject().up);
+            strafeVector.y = 0;
+            strafeVector.normalize();
+            strafeVector.multiplyScalar(direction.x * speed * deltaTime);
+            currentPos.add(strafeVector);
+        }
+        
+        // 衝突チェック
+        if (!checkCollisions(currentPos)) {
+            controls.getObject().position.copy(currentPos);
+        }
+        
+        // 垂直移動
+        controls.getObject().position.y += velocity.y * deltaTime;
+    } else {
+        // 通常移動
+        const finalPosition = controls.getObject().position.clone();
+        
+        // カメラ方向基準の移動計算
+        const forward = new THREE.Vector3();
+        controls.getObject().getWorldDirection(forward);
+        forward.y = 0;
+        forward.normalize();
+        
+        const right = new THREE.Vector3();
+        right.crossVectors(forward, controls.getObject().up).normalize();
+        
+        // 移動ベクトル合成
+        const moveVector = new THREE.Vector3();
+        moveVector.addScaledVector(forward, -velocity.z * deltaTime);
+        moveVector.addScaledVector(right, velocity.x * deltaTime);
+        
+        finalPosition.add(moveVector);
+        
+        if (!checkCollisions(finalPosition)) {
+            controls.getObject().position.x = finalPosition.x;
+            controls.getObject().position.z = finalPosition.z;
+        }
+        
+        controls.getObject().position.y += velocity.y * deltaTime;
     }
-    
-    controls.getObject().position.y += velocity.y * deltaTime;
-    
-    // 速度の減衰
-    velocity.x *= 0.8;
-    velocity.z *= 0.8;
     
     // マップ境界チェック
     const mapLimit = 98;
@@ -1752,10 +1809,10 @@ function animate() {
     for (const id in redItems) {
         const item = redItems[id];
         item.rotation.y = time;
-        item.position.y = item.userData.originalY || item.position.y + Math.sin(time * 2) * 0.3;
         if (!item.userData.originalY) {
             item.userData.originalY = item.position.y;
         }
+        item.position.y = item.userData.originalY + Math.sin(time * 2) * 0.3;
     }
     
     // ランク表示をカメラの方向に向ける
