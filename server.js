@@ -192,18 +192,29 @@ function generateRedItems() {
 // 初期生成
 generateRedItems();
 
-// ゲーム状態管理
+// ゲーム状態管理（デバッグ強化版）
 function checkGameState() {
     const playerCount = Object.keys(players).length;
+    console.log(`=== ゲーム状態チェック ===`);
+    console.log(`プレイヤー数: ${playerCount}`);
+    console.log(`最小プレイヤー数: ${MIN_PLAYERS}`);
+    console.log(`ゲーム開始済み: ${gameStarted}`);
+    console.log(`待機中: ${waitingForPlayers}`);
+    console.log(`カウントダウン実行中: ${countdownInterval !== null}`);
+    console.log(`プレイヤー一覧: ${Object.keys(players).join(', ')}`);
     
-    if (!gameStarted && playerCount >= MIN_PLAYERS && !waitingForPlayers) {
+    if (!gameStarted && playerCount >= MIN_PLAYERS && !countdownInterval) {
+        console.log(`✅ ゲーム開始条件達成！カウントダウンを開始します`);
         startGameCountdown();
     } else if (gameStarted && playerCount < 2) {
+        console.log(`⚠️ プレイヤー不足でゲームリセット`);
         resetGame();
     } else if (!gameStarted && playerCount < MIN_PLAYERS) {
+        console.log(`⏳ プレイヤー不足で待機状態を継続`);
         waitingForPlayers = true;
         gameStarted = false;
         if (countdownInterval) {
+            console.log(`❌ カウントダウンを停止`);
             clearInterval(countdownInterval);
             countdownInterval = null;
         }
@@ -212,32 +223,42 @@ function checkGameState() {
             currentPlayers: playerCount,
             requiredPlayers: MIN_PLAYERS
         });
+    } else {
+        console.log(`ℹ️ 状態変更なし - 現状維持`);
     }
+    console.log(`========================`);
 }
 
 // ゲーム開始カウントダウン
 function startGameCountdown() {
-    if (countdownInterval) return;
+    if (countdownInterval) {
+        console.log('カウントダウンは既に実行中です');
+        return;
+    }
     
     waitingForPlayers = false;
     let countdown = 5;
     
-    console.log('ゲーム開始カウントダウン開始');
+    console.log('ゲーム開始カウントダウン開始！');
     
-    // 全プレイヤーを空中に移動
+    // 全プレイヤーを空中にランダム配置
     for (const playerId in players) {
-        players[playerId].x = (Math.random() - 0.5) * 20; // ランダムな位置
-        players[playerId].y = 15; // 空中
+        players[playerId].x = (Math.random() - 0.5) * 20;
+        players[playerId].y = 15;
         players[playerId].z = (Math.random() - 0.5) * 20;
+        console.log(`プレイヤー ${playerId} を空中に配置: (${players[playerId].x.toFixed(1)}, 15, ${players[playerId].z.toFixed(1)})`);
     }
     
+    // 最初のカウントダウンを即座に送信
     broadcast({
         type: 'game_countdown',
         countdown: countdown
     });
+    console.log(`カウントダウン送信: ${countdown}`);
     
     countdownInterval = setInterval(() => {
         countdown--;
+        console.log(`カウントダウン: ${countdown}`);
         
         if (countdown > 0) {
             broadcast({
@@ -247,6 +268,7 @@ function startGameCountdown() {
         } else {
             clearInterval(countdownInterval);
             countdownInterval = null;
+            console.log('カウントダウン完了 - ゲーム開始');
             startGame();
         }
     }, 1000);
@@ -450,8 +472,15 @@ wss.on('connection', (ws, req) => {
         console.log(`${id} が鬼に設定されました`);
     }
     
-    // ゲーム状態をチェック
-    checkGameState();
+    // 接続完了後、少し遅延してゲーム状態をチェック
+    ws.connectionEstablished = true;
+    console.log(`プレイヤー ${id} の接続が完了しました`);
+    
+    // ゲーム状態をチェック（最後に実行）
+    setTimeout(() => {
+        console.log(`遅延チェック開始（プレイヤー ${id} 用）`);
+        checkGameState();
+    }, 200);
     
     // メッセージ処理
     ws.on('message', (message) => {
@@ -485,6 +514,11 @@ wss.on('connection', (ws, req) => {
                         y: players[id].y, 
                         z: players[id].z 
                     }, id);
+                    
+                    // ここでゲーム状態をチェック（重要！）
+                    setTimeout(() => {
+                        checkGameState();
+                    }, 100);
                     break;
                     
                 case 'move':
@@ -700,6 +734,18 @@ wss.on('connection', (ws, req) => {
                             console.log(`鬼交代完了: ${oldOni} → ${oniId} (距離: ${distance.toFixed(2)})`);
                         } else {
                             console.log(`鬼交代要求却下: 距離が遠すぎます (${distance.toFixed(2)}ユニット)`);
+                        }
+                    }
+                    break;
+                
+                case 'force_start_game':
+                    // 管理者用の強制ゲーム開始コマンド
+                    if (playerRanks[id] === 'OWNER') {
+                        console.log(`🔧 OWNER ${id} によってゲーム強制開始`);
+                        if (!gameStarted && !countdownInterval) {
+                            startGameCountdown();
+                        } else {
+                            console.log(`⚠️ ゲーム開始失敗: 既に開始済みまたはカウントダウン中`);
                         }
                     }
                     break;
