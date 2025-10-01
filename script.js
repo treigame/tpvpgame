@@ -236,14 +236,20 @@ function startGame() {
     gameStarted = true;
     gameCountdown = -1;
     waitingForPlayers = false;
-    controls.getObject().position.y = 15;
     isSpawned = true;
+    
+    // 地上に降下させる
+    controls.getObject().position.set(0, 1.7, 0);
+    velocity.set(0, 0, 0);
+    canJump = true;
+    
     showMessage('ゲーム開始！', 'success', 2000);
+    console.log('ゲーム開始 - 移動可能状態に設定');
 }
 
 // Three.jsシーンのセットアップ
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x1a0a2e, 30, 150); // 無限城風の霧
+scene.fog = new THREE.Fog(0x6b5b4d, 80, 200); // 明るめの茶色の霧
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -251,26 +257,71 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// 無限城風の照明
-const ambientLight = new THREE.AmbientLight(0x3d2463, 0.5);
+// 明るい照明
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0x8b5a9d, 0.7);
+const directionalLight = new THREE.DirectionalLight(0xffe4b5, 1.0);
 directionalLight.position.set(20, 50, 20);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
 
-// 無限城風の地面（木目調）
+// 木目テクスチャを使った地面
+const textureLoader = new THREE.TextureLoader();
 const planeGeometry = new THREE.PlaneGeometry(200, 200);
-const planeTexture = new THREE.TextureLoader().load('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0id29vZCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiM0YTI1MWUiLz48cGF0aCBkPSJNMCAwTDY0IDY0TTY0IDBMMCANjQiIHN0cm9rZT0iIzNhMWYxOCIgc3Ryb2tlLXdpZHRoPSIwLjUiIG9wYWNpdHk9IjAuMyIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjI1NiIgaGVpZ2h0PSIyNTYiIGZpbGw9InVybCgjd29vZCkiLz48L3N2Zz4=');
-planeTexture.wrapS = THREE.RepeatWrapping;
-planeTexture.wrapT = THREE.RepeatWrapping;
-planeTexture.repeat.set(20, 20);
+
+// 木目テクスチャの読み込み（フォールバック付き）
+const woodTexture = textureLoader.load(
+    'https://images.unsplash.com/photo-1587840490238-ab2f0e5b6fdd?w=512',
+    // 読み込み成功時
+    (texture) => {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(20, 20);
+        console.log('木目テクスチャの読み込み成功');
+    },
+    // 読み込み中
+    undefined,
+    // エラー時のフォールバック
+    (error) => {
+        console.warn('木目テクスチャの読み込み失敗、代替テクスチャを使用');
+        // 代替の木目パターン
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        
+        // 木目調のパターンを描画
+        const gradient = ctx.createLinearGradient(0, 0, 256, 0);
+        gradient.addColorStop(0, '#8B4513');
+        gradient.addColorStop(0.5, '#A0522D');
+        gradient.addColorStop(1, '#8B4513');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+        
+        // 木目の線を追加
+        ctx.strokeStyle = 'rgba(101, 67, 33, 0.3)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 256; i += 32) {
+            ctx.beginPath();
+            ctx.moveTo(0, i);
+            ctx.lineTo(256, i + Math.sin(i) * 10);
+            ctx.stroke();
+        }
+        
+        const fallbackTexture = new THREE.CanvasTexture(canvas);
+        fallbackTexture.wrapS = THREE.RepeatWrapping;
+        fallbackTexture.wrapT = THREE.RepeatWrapping;
+        fallbackTexture.repeat.set(20, 20);
+        planeMaterial.map = fallbackTexture;
+        planeMaterial.needsUpdate = true;
+    }
+);
 
 const planeMaterial = new THREE.MeshStandardMaterial({ 
-    map: planeTexture,
+    map: woodTexture,
     roughness: 0.9,
     metalness: 0.0
 });
@@ -284,9 +335,9 @@ const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
 const WALL_THICKNESS = 4;
 
-// 無限城風の壁（紫がかった木造）
+// 無限城風の壁（明るい木造）
 const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x5a3a4a,
+    color: 0x8B6F47,
     roughness: 0.8,
     metalness: 0.1
 });
@@ -329,9 +380,9 @@ blocks.push(wall4);
 
 // 無限城風の建物配置
 function createInfinityFortressBuildings() {
-    // 紫がかった木造の建物マテリアル
+    // 明るい木造の建物マテリアル
     const buildingMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x6a4a5a,
+        color: 0x8B6F47,
         roughness: 0.7,
         metalness: 0.2
     });
