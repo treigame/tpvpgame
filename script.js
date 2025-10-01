@@ -5,12 +5,12 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 const ws = new WebSocket(`wss://${window.location.host}`);
 let myId = null;
 let players = {};
-let redItems = {}; // 赤いアイテム（オーブの代替）
-let snowballs = {}; // 投げられた雪玉
+let redItems = {};
+let snowballs = {};
 let oniId = null;
 let isConnected = false;
-let canThrowSnowball = false; // 雪玉を投げられるかどうか
-let showExclamation = false; // ！マークを表示するかどうか
+let canThrowSnowball = false;
+let showExclamation = false;
 
 // ゲーム状態管理
 let gameStarted = false;
@@ -19,14 +19,14 @@ let waitingForPlayers = false;
 let isSpawned = false;
 
 // OWNER特権とフライトシステム
-let playerRank = null; // プレイヤーのランク
-let isFlying = false; // フライト状態
-let flightEnabled = false; // フライトが有効か
+let playerRank = null;
+let isFlying = false;
+let flightEnabled = false;
 
 // ゲーム状態の管理
 let gameState = {
     score: 0,
-    redItemsCollected: 0, // 収集した赤いアイテムの数
+    redItemsCollected: 0,
     timeAsOni: 0,
     timeAlive: 0,
     gameStartTime: Date.now(),
@@ -65,17 +65,14 @@ ws.onmessage = (event) => {
         
         // ゲーム状態に応じてプレイヤーを配置
         if (!gameStarted && waitingForPlayers) {
-            // 待機状態 - 空中に固定
             controls.getObject().position.set(0, 15, 0);
             isSpawned = false;
             showMessage('他のプレイヤーを待っています...', 'info', 3000);
         } else if (gameStarted) {
-            // ゲーム進行中 - 通常スポーン
             controls.getObject().position.set(0, 1.7, 0);
             isSpawned = true;
         }
         
-        // 鬼の開始時間を記録
         if (myId === oniId && gameStarted) {
             gameState.oniStartTime = Date.now();
             addSword(camera);
@@ -87,7 +84,6 @@ ws.onmessage = (event) => {
             }
         }
         
-        // 赤いアイテムの作成
         console.log('赤いアイテム作成開始...');
         for (const id in data.redItems || {}) {
             console.log(`赤いアイテム作成: ${id}`, data.redItems[id]);
@@ -99,7 +95,6 @@ ws.onmessage = (event) => {
     } else if (data.type === 'waiting_for_players') {
         waitingForPlayers = true;
         gameStarted = false;
-        // 空中に固定
         controls.getObject().position.set(0, 15, 0);
         isSpawned = false;
         showMessage(`プレイヤー待機中... (${data.currentPlayers}/3)`, 'info', 2000);
@@ -113,23 +108,17 @@ ws.onmessage = (event) => {
         if (data.id !== myId) {
             if (!players[data.id]) {
                 createPlayerMesh(data.id, data);
-                console.log(`新しいプレイヤーメッシュを作成: ${data.id}`);
             } else {
-                // 滑らかな移動補間
                 const player = players[data.id];
                 const targetPos = new THREE.Vector3(data.x, data.y, data.z);
                 const currentPos = player.position.clone();
                 const distance = currentPos.distanceTo(targetPos);
                 
-                // 距離が大きい場合は即座に移動（テレポート）
                 if (distance > 10) {
                     player.position.set(data.x, data.y, data.z);
-                    console.log(`プレイヤー ${data.id} をテレポート: 距離=${distance.toFixed(2)}`);
                 } else {
-                    // 滑らかな移動
                     player.position.lerp(targetPos, 0.3);
                 }
-                console.log(`プレイヤー ${data.id} 位置更新: (${data.x.toFixed(1)}, ${data.y.toFixed(1)}, ${data.z.toFixed(1)})`);
             }
         }
     } else if (data.type === 'remove_player') {
@@ -146,7 +135,6 @@ ws.onmessage = (event) => {
             gameState.redItemsCollected++;
             gameState.score += 10;
             
-            // 8個集めたら雪玉投擲可能
             if (gameState.redItemsCollected >= 8) {
                 canThrowSnowball = true;
                 showMessage('雪玉が投げられるようになりました！クリックで投擲', 'success', 3000);
@@ -161,24 +149,20 @@ ws.onmessage = (event) => {
         }
         if (data.hitPlayerId === oniId) {
             showMessage('雪玉が鬼に命中！ゲームオーバー！', 'success', 5000);
-            // ゲームオーバー処理
             setTimeout(() => {
-                location.reload(); // ページリロード
+                location.reload();
             }, 3000);
         }
     } else if (data.type === 'items_respawned') {
-        // 既存の赤いアイテムを削除
         for (const id in redItems) {
             scene.remove(redItems[id]);
         }
         redItems = {};
         
-        // 新しい赤いアイテムを追加
         for (const id in data.redItems) {
             createRedItemMesh(id, data.redItems[id]);
         }
     } else if (data.type === 'item_respawned') {
-        // 単体アイテムの再出現
         console.log(`アイテム再出現: ${data.itemId}`, data.item);
         createRedItemMesh(data.itemId, data.item);
     } else if (data.type === 'show_exclamation') {
@@ -194,9 +178,7 @@ ws.onmessage = (event) => {
     } else if (data.type === 'oni_changed') {
         const oldOni = oniId;
         oniId = data.oniId;
-        console.log(`鬼が交代しました: ${oniId}`);
         
-        // 鬼時間の記録
         if (oldOni === myId && gameState.oniStartTime) {
             gameState.timeAsOni += Date.now() - gameState.oniStartTime;
             gameState.oniStartTime = null;
@@ -205,7 +187,6 @@ ws.onmessage = (event) => {
             gameState.oniStartTime = Date.now();
         }
         
-        // 剣の管理
         if (oldOni === myId) {
             removeSword(camera);
         } else if (players[oldOni] && players[oldOni].sword) {
@@ -214,18 +195,15 @@ ws.onmessage = (event) => {
         
         if (oniId === myId) {
             addSword(camera);
-            // 鬼になったら雪玉投擲無効
             canThrowSnowball = false;
             gameState.redItemsCollected = 0;
         } else if (players[oniId] && !players[oniId].sword) {
             addSword(players[oniId]);
         }
         
-        // プレイヤーの色を更新
         updatePlayerColors();
         updateUI();
     } else if (data.type === 'player_rank_updated') {
-        // プレイヤーのランク更新
         if (data.playerId !== myId && players[data.playerId]) {
             if (data.rank) {
                 addRankDisplay(players[data.playerId], data.rank);
@@ -246,7 +224,6 @@ ws.onerror = (error) => {
     isConnected = false;
 };
 
-// カウントダウン表示
 function showCountdown(count) {
     if (count > 0) {
         showMessage(`Game will start in ${count}`, 'info', 1000);
@@ -255,22 +232,18 @@ function showCountdown(count) {
     }
 }
 
-// ゲーム開始
 function startGame() {
     gameStarted = true;
     gameCountdown = -1;
     waitingForPlayers = false;
-    
-    // 空中から落下開始
     controls.getObject().position.y = 15;
     isSpawned = true;
-    
     showMessage('ゲーム開始！', 'success', 2000);
-    console.log('ゲームが開始されました');
 }
 
 // Three.jsシーンのセットアップ
 const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x1a0a2e, 30, 150); // 無限城風の霧
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -278,45 +251,28 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// 光源
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// 無限城風の照明
+const ambientLight = new THREE.AmbientLight(0x3d2463, 0.5);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+const directionalLight = new THREE.DirectionalLight(0x8b5a9d, 0.7);
 directionalLight.position.set(20, 50, 20);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
-directionalLight.shadow.camera.near = 0.5;
-directionalLight.shadow.camera.far = 500;
-directionalLight.shadow.camera.left = -100;
-directionalLight.shadow.camera.right = 100;
-directionalLight.shadow.camera.top = 100;
-directionalLight.shadow.camera.bottom = -100;
 scene.add(directionalLight);
 
-// チェッカーパターンの地面
-const planeGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
-const textureCanvas = document.createElement('canvas');
-textureCanvas.width = 512;
-textureCanvas.height = 512;
-const ctx = textureCanvas.getContext('2d');
-const tileSize = 32;
-for (let x = 0; x < 16; x++) {
-    for (let y = 0; y < 16; y++) {
-        ctx.fillStyle = (x + y) % 2 === 0 ? '#666666' : '#333333';
-        ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-    }
-}
-const planeTexture = new THREE.CanvasTexture(textureCanvas);
+// 無限城風の地面（木目調）
+const planeGeometry = new THREE.PlaneGeometry(200, 200);
+const planeTexture = new THREE.TextureLoader().load('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0id29vZCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiM0YTI1MWUiLz48cGF0aCBkPSJNMCAwTDY0IDY0TTY0IDBMMCANjQiIHN0cm9rZT0iIzNhMWYxOCIgc3Ryb2tlLXdpZHRoPSIwLjUiIG9wYWNpdHk9IjAuMyIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjI1NiIgaGVpZ2h0PSIyNTYiIGZpbGw9InVybCgjd29vZCkiLz48L3N2Zz4=');
 planeTexture.wrapS = THREE.RepeatWrapping;
 planeTexture.wrapT = THREE.RepeatWrapping;
-planeTexture.repeat.set(10, 10);
+planeTexture.repeat.set(20, 20);
 
 const planeMaterial = new THREE.MeshStandardMaterial({ 
     map: planeTexture,
-    roughness: 0.8,
-    metalness: 0.1
+    roughness: 0.9,
+    metalness: 0.0
 });
 const plane = new THREE.Mesh(planeGeometry, planeMaterial);
 plane.rotation.x = -Math.PI / 2;
@@ -324,14 +280,14 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
-// 外周の壁と障害物の作成
 const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
 const WALL_THICKNESS = 4;
 
+// 無限城風の壁（紫がかった木造）
 const wallMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0xffffff,
-    roughness: 0.3,
+    color: 0x5a3a4a,
+    roughness: 0.8,
     metalness: 0.1
 });
 
@@ -371,95 +327,88 @@ scene.add(wall4);
 walls.push(wall4);
 blocks.push(wall4);
 
-// 改良された建物配置システム
-function createStructuredBuildings() {
+// 無限城風の建物配置
+function createInfinityFortressBuildings() {
+    // 紫がかった木造の建物マテリアル
     const buildingMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x8B4513,
-        roughness: 0.3,
-        metalness: 0.1
+        color: 0x6a4a5a,
+        roughness: 0.7,
+        metalness: 0.2
     });
     
-    const specialMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xFECE57,
+    // 金色の装飾マテリアル
+    const accentMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xd4af37,
         roughness: 0.3,
-        metalness: 0.1
+        metalness: 0.7,
+        emissive: 0x8B7500,
+        emissiveIntensity: 0.2
     });
 
-    // 中央広場の建物群
-    const centralBuildings = [
-        { pos: [0, 4, 0], size: [12, 8, 12], type: 'central_tower' },
-        { pos: [20, 3, 20], size: [8, 6, 8], type: 'corner_building' },
-        { pos: [-20, 3, 20], size: [8, 6, 8], type: 'corner_building' },
-        { pos: [20, 3, -20], size: [8, 6, 8], type: 'corner_building' },
-        { pos: [-20, 3, -20], size: [8, 6, 8], type: 'corner_building' },
+    // 複雑に入り組んだ建物群（無限城風）
+    const buildings = [
+        // 中央の大きな塔
+        { pos: [0, 8, 0], size: [15, 16, 15], material: buildingMaterial },
+        { pos: [0, 18, 0], size: [10, 6, 10], material: accentMaterial },
+        
+        // 斜めの建物群
+        { pos: [25, 5, 15], size: [10, 10, 8], rotation: [0, 0.3, 0], material: buildingMaterial },
+        { pos: [-25, 6, 20], size: [12, 12, 10], rotation: [0, -0.4, 0.1], material: buildingMaterial },
+        { pos: [30, 7, -25], size: [8, 14, 12], rotation: [0, 0.5, -0.1], material: buildingMaterial },
+        { pos: [-20, 5, -30], size: [14, 10, 8], rotation: [0, -0.3, 0], material: buildingMaterial },
+        
+        // 複数階層の建物
+        { pos: [45, 4, 45], size: [10, 8, 10], material: buildingMaterial },
+        { pos: [45, 10, 45], size: [8, 6, 8], material: accentMaterial },
+        { pos: [-45, 5, 45], size: [12, 10, 12], material: buildingMaterial },
+        { pos: [-45, 12, 45], size: [9, 5, 9], material: accentMaterial },
+        
+        // 迷路風の通路
+        { pos: [15, 3, 50], size: [6, 6, 20], material: buildingMaterial },
+        { pos: [-15, 3, 50], size: [6, 6, 20], material: buildingMaterial },
+        { pos: [0, 3, 65], size: [40, 6, 6], material: buildingMaterial },
+        
+        // 不規則な配置の建物
+        { pos: [60, 6, 20], size: [10, 12, 15], rotation: [0, 0.2, 0], material: buildingMaterial },
+        { pos: [-60, 5, -20], size: [15, 10, 10], rotation: [0, -0.3, 0], material: buildingMaterial },
+        { pos: [50, 4, -50], size: [12, 8, 12], material: buildingMaterial },
+        { pos: [-50, 7, 50], size: [10, 14, 10], material: buildingMaterial },
+        
+        // 小さな櫓
+        { pos: [70, 8, 0], size: [8, 16, 8], material: accentMaterial },
+        { pos: [-70, 8, 0], size: [8, 16, 8], material: accentMaterial },
+        { pos: [0, 8, 70], size: [8, 16, 8], material: accentMaterial },
+        { pos: [0, 8, -70], size: [8, 16, 8], material: accentMaterial },
     ];
 
-    // 外周エリアの建物
-    const outerBuildings = [
-        { pos: [0, 3, 60], size: [15, 6, 10], type: 'long_building' },
-        { pos: [30, 3, 70], size: [10, 8, 10], type: 'tower' },
-        { pos: [-30, 3, 70], size: [10, 8, 10], type: 'tower' },
-        { pos: [0, 3, -60], size: [15, 6, 10], type: 'long_building' },
-        { pos: [40, 3, -65], size: [8, 10, 8], type: 'tall_tower' },
-        { pos: [-40, 3, -65], size: [8, 10, 8], type: 'tall_tower' },
-        { pos: [70, 3, 0], size: [10, 6, 20], type: 'wall_building' },
-        { pos: [60, 3, 30], size: [12, 5, 8], type: 'platform' },
-        { pos: [60, 3, -30], size: [12, 5, 8], type: 'platform' },
-        { pos: [-70, 3, 0], size: [10, 6, 20], type: 'wall_building' },
-        { pos: [-60, 3, 30], size: [12, 5, 8], type: 'platform' },
-        { pos: [-60, 3, -30], size: [12, 5, 8], type: 'platform' },
-    ];
-
-    // 迷路風の小さな建物群
-    const mazeBuildings = [
-        { pos: [45, 2, 45], size: [6, 4, 6], type: 'small_block' },
-        { pos: [55, 2, 35], size: [6, 4, 6], type: 'small_block' },
-        { pos: [35, 2, 55], size: [6, 4, 6], type: 'small_block' },
-        { pos: [-45, 2, 45], size: [6, 4, 6], type: 'small_block' },
-        { pos: [-55, 2, 35], size: [6, 4, 6], type: 'small_block' },
-        { pos: [-35, 2, 55], size: [6, 4, 6], type: 'small_block' },
-        { pos: [45, 2, -45], size: [6, 4, 6], type: 'small_block' },
-        { pos: [55, 2, -35], size: [6, 4, 6], type: 'small_block' },
-        { pos: [35, 2, -55], size: [6, 4, 6], type: 'small_block' },
-        { pos: [-45, 2, -45], size: [6, 4, 6], type: 'small_block' },
-        { pos: [-55, 2, -35], size: [6, 4, 6], type: 'small_block' },
-        { pos: [-35, 2, -55], size: [6, 4, 6], type: 'small_block' },
-    ];
-
-    // 特殊建物
-    const specialBuildings = [
-        { pos: [0, 6, 40], size: [8, 12, 8], type: 'special_tower', material: specialMaterial },
-        { pos: [0, 6, -40], size: [8, 12, 8], type: 'special_tower', material: specialMaterial },
-    ];
-
-    // 全建物を作成
-    const allBuildings = [
-        ...centralBuildings,
-        ...outerBuildings,
-        ...mazeBuildings,
-        ...specialBuildings
-    ];
-
-    allBuildings.forEach((building, index) => {
-        const material = building.material || buildingMaterial;
+    buildings.forEach((building, index) => {
         const geometry = new THREE.BoxGeometry(...building.size);
-        const mesh = new THREE.Mesh(geometry, material);
+        const mesh = new THREE.Mesh(geometry, building.material);
         
         mesh.position.set(...building.pos);
+        if (building.rotation) {
+            mesh.rotation.set(...building.rotation);
+        }
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        mesh.userData.buildingType = building.type;
-        mesh.userData.buildingId = `building_${index}`;
         
         scene.add(mesh);
         blocks.push(mesh);
+        
+        // 金色のアクセントを追加
+        if (Math.random() > 0.6) {
+            const accentGeom = new THREE.BoxGeometry(building.size[0] * 1.1, 0.5, building.size[2] * 1.1);
+            const accent = new THREE.Mesh(accentGeom, accentMaterial);
+            accent.position.set(building.pos[0], building.pos[1] + building.size[1]/2, building.pos[2]);
+            accent.castShadow = true;
+            scene.add(accent);
+        }
     });
 
-    console.log(`構造化された建物を作成しました: ${allBuildings.length}個の建物`);
+    console.log(`無限城風建物を作成しました: ${buildings.length}個`);
 }
 
-// 構造化された建物を作成
-createStructuredBuildings();
+createInfinityFortressBuildings();
 
 // UIエレメントの作成
 function createUI() {
@@ -503,10 +452,10 @@ function createUI() {
             </div>
         </div>
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
-            <div>W: 前進 | S: 後退 | A: 左移動 | D: 右移動 | Space: ジャンプ</div>
+            <div>W: 前進 | S: 後退 | A: 左 | D: 右 | Space: ジャンプ</div>
             <div>マウス: 視点移動 | クリック: 雪玉投擲/鬼交代</div>
             <div id="owner-controls" style="display: none; color: #gold;">
-                F: フライト切替 | フライト中: Space: 上昇 | Shift: 下降 | WASD: 水平移動
+                F: フライト切替
             </div>
             <div>🔴赤いアイテム8個で雪玉投擲可能</div>
         </div>
@@ -516,7 +465,6 @@ function createUI() {
     createMinimap();
 }
 
-// ミニマップの作成
 function createMinimap() {
     const minimapContainer = document.createElement('div');
     minimapContainer.id = 'minimap';
@@ -549,11 +497,9 @@ function createMinimap() {
     gameState.minimapCtx = canvas.getContext('2d');
 }
 
-// プレイヤーメッシュ
 function createPlayerMesh(id, data) {
     const group = new THREE.Group();
     
-    // 胴体
     const bodyGeometry = new THREE.CapsuleGeometry(0.8, 1.6);
     const bodyMaterial = new THREE.MeshStandardMaterial({ 
         color: id === oniId ? 0x0000ff : 0x00ff00,
@@ -565,7 +511,6 @@ function createPlayerMesh(id, data) {
     group.add(body);
     group.bodyMesh = body;
     
-    // 頭
     const headGeometry = new THREE.SphereGeometry(0.5);
     const headMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffdbac,
@@ -588,7 +533,6 @@ function createPlayerMesh(id, data) {
     return group;
 }
 
-// プレイヤーの色を更新
 function updatePlayerColors() {
     for (const id in players) {
         const player = players[id];
@@ -598,13 +542,11 @@ function updatePlayerColors() {
     }
 }
 
-// 剣を追加する関数
 function addSword(mesh) {
     if (mesh.sword) return;
     
     const swordGroup = new THREE.Group();
     
-    // 刃
     const bladeGeometry = new THREE.BoxGeometry(0.1, 0.1, 1.5);
     const bladeMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xc0c0c0,
@@ -616,7 +558,6 @@ function addSword(mesh) {
     blade.castShadow = true;
     swordGroup.add(blade);
     
-    // 柄
     const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.5);
     const handleMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x8B4513,
@@ -637,7 +578,6 @@ function addSword(mesh) {
     mesh.sword = swordGroup;
 }
 
-// 剣を削除する関数
 function removeSword(mesh) {
     if (mesh.sword) {
         mesh.remove(mesh.sword);
@@ -645,13 +585,11 @@ function removeSword(mesh) {
     }
 }
 
-// ランク表示を追加する関数
 function addRankDisplay(mesh, rank) {
     if (mesh.rankDisplay) return;
     
     const rankGroup = new THREE.Group();
     
-    // ランク背景（赤い円）
     const bgGeometry = new THREE.RingGeometry(0, 1.2, 16);
     const bgMaterial = new THREE.MeshBasicMaterial({ 
         color: 0xff0000,
@@ -663,19 +601,16 @@ function addRankDisplay(mesh, rank) {
     bgMesh.rotation.x = -Math.PI / 2;
     rankGroup.add(bgMesh);
     
-    // テキスト用のキャンバスを作成
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 64;
     const context = canvas.getContext('2d');
     
-    // テキストを描画
     context.fillStyle = '#ffffff';
     context.font = 'bold 32px Arial';
     context.textAlign = 'center';
     context.fillText(rank, 128, 40);
     
-    // テクスチャとしてキャンバスを使用
     const texture = new THREE.CanvasTexture(canvas);
     const textMaterial = new THREE.MeshBasicMaterial({ 
         map: texture,
@@ -683,23 +618,18 @@ function addRankDisplay(mesh, rank) {
         alphaTest: 0.1
     });
     
-    // テキスト平面を作成
     const textGeometry = new THREE.PlaneGeometry(2, 0.5);
     const textMesh = new THREE.Mesh(textGeometry, textMaterial);
     textMesh.position.y = 0.1;
     rankGroup.add(textMesh);
     
-    // プレイヤーの頭上に配置
     rankGroup.position.set(0, 3.5, 0);
-    
-    // カメラの方向を向くように設定
     rankGroup.lookAt(camera.position);
     
     mesh.add(rankGroup);
     mesh.rankDisplay = rankGroup;
 }
 
-// ランク表示を削除する関数
 function removeRankDisplay(mesh) {
     if (mesh.rankDisplay) {
         mesh.remove(mesh.rankDisplay);
@@ -707,10 +637,7 @@ function removeRankDisplay(mesh) {
     }
 }
 
-// 赤いアイテムメッシュの作成
 function createRedItemMesh(id, data) {
-    console.log(`赤いアイテムメッシュ作成: ${id}`, data);
-    
     const geometry = new THREE.SphereGeometry(1.0, 16, 16);
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xff0000,
@@ -723,7 +650,6 @@ function createRedItemMesh(id, data) {
     mesh.position.set(data.x, data.y, data.z);
     mesh.castShadow = true;
     
-    // 光源も追加して更に目立たせる
     const pointLight = new THREE.PointLight(0xff0000, 2, 10);
     pointLight.position.copy(mesh.position);
     scene.add(pointLight);
@@ -732,7 +658,6 @@ function createRedItemMesh(id, data) {
     scene.add(mesh);
     redItems[id] = mesh;
     
-    // 出現エフェクト
     mesh.scale.set(0.1, 0.1, 0.1);
     const startTime = Date.now();
     function appearEffect() {
@@ -748,12 +673,9 @@ function createRedItemMesh(id, data) {
     }
     appearEffect();
     
-    console.log(`赤いアイテム ${id} を位置 (${data.x}, ${data.y}, ${data.z}) に作成しました`);
-    
     return mesh;
 }
 
-// 雪玉メッシュの作成
 function createSnowballMesh(id, data) {
     const geometry = new THREE.SphereGeometry(0.3, 8, 8);
     const material = new THREE.MeshStandardMaterial({ 
@@ -767,13 +689,11 @@ function createSnowballMesh(id, data) {
     scene.add(mesh);
     snowballs[id] = mesh;
     
-    // 雪玉の移動アニメーション
     animateSnowball(mesh, data);
     
     return mesh;
 }
 
-// 雪玉のアニメーション
 function animateSnowball(mesh, data) {
     const startTime = Date.now();
     const duration = 2000;
@@ -802,7 +722,6 @@ function animateSnowball(mesh, data) {
     animate();
 }
 
-// 感嘆符マークの表示
 function showExclamationMark() {
     const exclamationElement = document.getElementById('exclamation-mark');
     if (exclamationElement) {
@@ -847,7 +766,6 @@ function showExclamationMark() {
     }
 }
 
-// 感嘆符マークの非表示
 function hideExclamationMark() {
     const exclamationElement = document.getElementById('exclamation-mark');
     if (exclamationElement) {
@@ -855,9 +773,7 @@ function hideExclamationMark() {
     }
 }
 
-// 設定UIの作成
 function createSettingsUI() {
-    // 設定ボタン
     const settingsButton = document.createElement('div');
     settingsButton.id = 'settings-button';
     settingsButton.innerHTML = '⚙️ Settings';
@@ -878,7 +794,6 @@ function createSettingsUI() {
         transition: background-color 0.3s;
     `;
     
-    // 設定メニュー
     const settingsMenu = document.createElement('div');
     settingsMenu.id = 'settings-menu';
     settingsMenu.style.cssText = `
@@ -931,12 +846,8 @@ function createSettingsUI() {
                 font-size: 14px;
             ">確認</button>
         </div>
-        <div style="font-size: 12px; opacity: 0.7;">
-            タブレットモードでタッチ操作を有効にします
-        </div>
     `;
     
-    // ジョイスティック
     const joystickContainer = document.createElement('div');
     joystickContainer.id = 'joystick-container';
     joystickContainer.style.cssText = `
@@ -971,7 +882,6 @@ function createSettingsUI() {
     
     joystickContainer.appendChild(joystickKnob);
     
-    // ジャンプボタン
     const jumpButton = document.createElement('div');
     jumpButton.id = 'jump-button';
     jumpButton.innerHTML = 'JUMP';
@@ -1002,13 +912,11 @@ function createSettingsUI() {
     document.body.appendChild(joystickContainer);
     document.body.appendChild(jumpButton);
     
-    // イベントリスナー
     settingsButton.addEventListener('click', () => {
         const menu = document.getElementById('settings-menu');
         menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
     });
     
-    // 外側クリックで設定メニューを閉じる
     document.addEventListener('click', (event) => {
         const menu = document.getElementById('settings-menu');
         const button = document.getElementById('settings-button');
@@ -1017,7 +925,6 @@ function createSettingsUI() {
         }
     });
     
-    // タブレットモード切り替え
     document.getElementById('tablet-toggle').addEventListener('click', () => {
         isTabletMode = !isTabletMode;
         const toggle = document.getElementById('tablet-toggle');
@@ -1036,11 +943,9 @@ function createSettingsUI() {
             jump.style.display = 'none';
         }
         
-        // 設定メニューを閉じる
         document.getElementById('settings-menu').style.display = 'none';
     });
     
-    // コード確認機能
     document.getElementById('code-submit').addEventListener('click', () => {
         const codeInput = document.getElementById('code-input');
         const code = codeInput.value.trim();
@@ -1050,16 +955,13 @@ function createSettingsUI() {
             flightEnabled = true;
             showMessage('OWNERランクが付与されました！Fキーでフライト切替', 'success', 3000);
             
-            // OWNER UIを表示
             const ownerStatus = document.getElementById('owner-status');
             const ownerControls = document.getElementById('owner-controls');
             if (ownerStatus) ownerStatus.style.display = 'block';
             if (ownerControls) ownerControls.style.display = 'block';
             
-            // 自分にランク表示を追加
             addRankDisplay(camera, 'OWNER');
             
-            // サーバーにランク情報を送信
             ws.send(JSON.stringify({
                 type: 'set_rank',
                 playerId: myId,
@@ -1074,18 +976,15 @@ function createSettingsUI() {
         }
     });
     
-    // Enterキーでコード確認
     document.getElementById('code-input').addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             document.getElementById('code-submit').click();
         }
     });
     
-    // ジョイスティック操作
     setupJoystickControls();
 }
 
-// ジョイスティック操作の設定
 function setupJoystickControls() {
     const container = document.getElementById('joystick-container');
     const knob = document.getElementById('joystick-knob');
@@ -1148,17 +1047,14 @@ function setupJoystickControls() {
         knob.style.transform = 'translate(-50%, -50%)';
     }
     
-    // マウスイベント
     knob.addEventListener('mousedown', startDrag);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', endDrag);
     
-    // タッチイベント
     knob.addEventListener('touchstart', startDrag);
     document.addEventListener('touchmove', drag);
     document.addEventListener('touchend', endDrag);
     
-    // ジャンプボタン
     function jump() {
         if (canJump || (flightEnabled && isFlying)) {
             velocity.y += 18;
@@ -1173,7 +1069,6 @@ function setupJoystickControls() {
     });
 }
 
-// PointerLockControls
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
 
@@ -1188,17 +1083,14 @@ let canJump = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
-// マウスクリック・タッチで剣振りアクション
 let swordSwinging = false;
 
 document.addEventListener('click', () => {
     if (!document.pointerLockElement) {
         document.body.requestPointerLock();
     } else if (myId === oniId && !swordSwinging && gameStarted) {
-        // 鬼の場合は剣を振る
         swingSword();
     } else if (canThrowSnowball && myId !== oniId && gameStarted) {
-        // 逃走者で雪玉投擲可能な場合
         throwSnowball();
     }
 });
@@ -1210,7 +1102,6 @@ document.addEventListener('touchstart', (event) => {
     }
 });
 
-// 剣振りアクション
 function swingSword() {
     if (!camera.sword || swordSwinging) return;
     
@@ -1218,9 +1109,6 @@ function swingSword() {
     const sword = camera.sword;
     const originalRotation = sword.rotation.clone();
     
-    console.log('剣振りアクション開始！');
-    
-    // 剣振りアニメーション
     const swingDuration = 300;
     const startTime = Date.now();
     
@@ -1229,19 +1117,14 @@ function swingSword() {
         const progress = Math.min(elapsed / swingDuration, 1);
         
         if (progress < 1) {
-            // 剣を振り下ろす
             const swingAngle = Math.sin(progress * Math.PI) * Math.PI / 3;
             sword.rotation.x = originalRotation.x - swingAngle;
             sword.rotation.z = originalRotation.z + swingAngle * 0.5;
             
             requestAnimationFrame(animateSwing);
         } else {
-            // 元の位置に戻す
             sword.rotation.copy(originalRotation);
             swordSwinging = false;
-            console.log('剣振りアクション完了');
-            
-            // 剣振り時の鬼交代チェック
             checkSwordHit();
         }
     }
@@ -1249,7 +1132,6 @@ function swingSword() {
     animateSwing();
 }
 
-// 剣での攻撃判定
 function checkSwordHit() {
     if (myId !== oniId) return;
     
@@ -1259,7 +1141,6 @@ function checkSwordHit() {
         const distance = controls.getObject().position.distanceTo(otherPlayer.position);
         
         if (distance < 4.0) {
-            console.log(`剣攻撃ヒット！鬼交代: ${myId} → ${id}`);
             ws.send(JSON.stringify({ 
                 type: 'tag_player',
                 id: myId,
@@ -1270,7 +1151,6 @@ function checkSwordHit() {
     }
 }
 
-// 雪玉投擲
 function throwSnowball() {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
@@ -1295,7 +1175,6 @@ function throwSnowball() {
     updateUI();
 }
 
-// キーボードイベント（完全修正版）
 const keys = {};
 
 document.addEventListener('keydown', (event) => {
@@ -1305,24 +1184,22 @@ document.addEventListener('keydown', (event) => {
     
     switch (event.code) {
         case 'KeyW':
-            moveForward = true; // W = 前進
+            moveForward = true;
             break;
         case 'KeyA':
-            moveLeft = true; // A = 左移動
+            moveLeft = true;
             break;
         case 'KeyS':
-            moveBackward = true; // S = 後退
+            moveBackward = true;
             break;
         case 'KeyD':
-            moveRight = true; // D = 右移動
+            moveRight = true;
             break;
         case 'Space':
             event.preventDefault();
             if (flightEnabled && isFlying) {
-                // フライト中は上昇
                 velocity.y += 15;
             } else if (canJump && gameStarted && isSpawned) {
-                // 通常ジャンプ
                 velocity.y += 18;
                 canJump = false;
             }
@@ -1330,20 +1207,18 @@ document.addEventListener('keydown', (event) => {
         case 'ShiftLeft':
             event.preventDefault();
             if (flightEnabled && isFlying) {
-                // フライト中は下降
                 velocity.y -= 15;
             }
             break;
         case 'KeyF':
             event.preventDefault();
             if (flightEnabled && playerRank === 'OWNER') {
-                // フライト切り替え
                 isFlying = !isFlying;
                 const flightStatus = document.getElementById('flight-status');
                 if (flightStatus) {
                     flightStatus.textContent = isFlying ? 'フライト有効' : 'フライト無効';
                 }
-                showMessage(isFlying ? 'フライトモード有効！待機関係なく自由飛行可能' : 'フライトモード無効', 'success', 2000);
+                showMessage(isFlying ? 'フライトモード有効' : 'フライトモード無効', 'success', 2000);
             }
             break;
     }
@@ -1368,10 +1243,9 @@ document.addEventListener('keyup', (event) => {
     }
 });
 
-// プレイヤー位置送信の最適化
 let lastSentPosition = new THREE.Vector3();
 let lastSentTime = 0;
-const POSITION_SEND_INTERVAL = 100; // 100msに変更（より頻繁に）
+const POSITION_SEND_INTERVAL = 100;
 const POSITION_THRESHOLD = 0.1;
 
 function sendPositionUpdate() {
@@ -1380,7 +1254,6 @@ function sendPositionUpdate() {
     const currentTime = performance.now();
     const currentPosition = controls.getObject().position;
     
-    // ゲーム開始前でもフライト中は位置送信
     const shouldSend = gameStarted || (isFlying && flightEnabled);
     
     if (shouldSend && currentTime - lastSentTime > POSITION_SEND_INTERVAL && 
@@ -1396,11 +1269,9 @@ function sendPositionUpdate() {
         
         lastSentPosition.copy(currentPosition);
         lastSentTime = currentTime;
-        console.log(`位置送信: (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)})`);
     }
 }
 
-// UIの更新
 function updateUI() {
     const currentTime = Date.now();
     const gameTime = Math.floor((currentTime - gameState.gameStartTime) / 1000);
@@ -1414,7 +1285,6 @@ function updateUI() {
         document.getElementById('game-time').textContent = 
             `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         
-        // 赤いアイテム数の更新
         const redItemsElement = document.getElementById('red-items');
         const redItemsCountElement = document.getElementById('red-items-count');
         const snowballStatusElement = document.getElementById('snowball-status');
@@ -1431,7 +1301,6 @@ function updateUI() {
             snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
         }
         
-        // 鬼時間の更新
         const oniTimeElement = document.getElementById('oni-time');
         if (myId === oniId) {
             oniTimeElement.style.display = 'block';
@@ -1449,31 +1318,25 @@ function updateUI() {
         }
     }
     
-    // ミニマップの更新
     updateMinimap();
 }
 
-// ミニマップの更新
 function updateMinimap() {
     if (!gameState.minimapCtx) return;
     
     const ctx = gameState.minimapCtx;
     const canvas = gameState.minimapCanvas;
     
-    // 背景をクリア
     ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // マップサイズとスケール
     const mapSize = 200;
     const scale = canvas.width / mapSize;
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     
-    // プレイヤーの現在位置
     const playerPos = controls.getObject().position;
     
-    // 建物を描画
     ctx.fillStyle = '#8B4513';
     blocks.forEach(block => {
         const x = centerX + (block.position.x - playerPos.x) * scale;
@@ -1485,7 +1348,6 @@ function updateMinimap() {
         }
     });
     
-    // 赤いアイテムを描画
     ctx.fillStyle = '#ff0000';
     for (const id in redItems) {
         const item = redItems[id];
@@ -1499,7 +1361,6 @@ function updateMinimap() {
         }
     }
     
-    // 他のプレイヤーを描画
     for (const id in players) {
         const player = players[id];
         const x = centerX + (player.position.x - playerPos.x) * scale;
@@ -1511,7 +1372,6 @@ function updateMinimap() {
             ctx.arc(x, y, 4, 0, 2 * Math.PI);
             ctx.fill();
             
-            // プレイヤー名を表示
             ctx.fillStyle = '#ffffff';
             ctx.font = '10px Arial';
             ctx.textAlign = 'center';
@@ -1519,13 +1379,11 @@ function updateMinimap() {
         }
     }
     
-    // 自分を描画（中央）
     ctx.fillStyle = myId === oniId ? '#0000ff' : '#00ff00';
     ctx.beginPath();
     ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
     ctx.fill();
     
-    // 方向指示
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -1536,7 +1394,6 @@ function updateMinimap() {
     ctx.stroke();
 }
 
-// メッセージ表示関数
 function showMessage(text, type = 'info', duration = 3000) {
     const messageContainer = document.getElementById('message-container') || createMessageContainer();
     
@@ -1582,7 +1439,6 @@ function createMessageContainer() {
         pointer-events: none;
     `;
     
-    // アニメーション用のスタイルを追加
     const style = document.createElement('style');
     style.textContent = `
         @keyframes slideIn {
@@ -1604,7 +1460,6 @@ function createMessageContainer() {
     return container;
 }
 
-// 衝突検出
 function checkCollisions(targetPosition) {
     const playerRadius = 1.0;
     
@@ -1623,7 +1478,6 @@ function checkCollisions(targetPosition) {
     return false;
 }
 
-// 赤いアイテムの収集チェック
 function checkRedItemCollection() {
     if (!gameStarted) return;
     
@@ -1645,7 +1499,6 @@ function checkRedItemCollection() {
     }
 }
 
-// ゲームループ（完全修正版）
 function animate() {
     requestAnimationFrame(animate);
     
@@ -1654,9 +1507,7 @@ function animate() {
         return;
     }
     
-    // フライトモード中は常に移動可能
     if (isFlying && flightEnabled) {
-        // フライト中は待機やゲーム状態に関係なく移動可能
         handleFlightMovement();
         sendPositionUpdate();
         updateUI();
@@ -1664,9 +1515,7 @@ function animate() {
         return;
     }
     
-    // ゲーム開始前は移動を無効化
     if (!gameStarted || !isSpawned) {
-        // 待機中は空中に固定
         if (waitingForPlayers) {
             controls.getObject().position.y = 15;
             velocity.set(0, 0, 0);
@@ -1676,29 +1525,19 @@ function animate() {
         return;
     }
     
-    // 通常のゲーム移動処理
     handleNormalMovement();
     
-    // マップ境界チェック
     const mapLimit = 98;
     if (controls.getObject().position.x < -mapLimit) controls.getObject().position.x = -mapLimit;
     if (controls.getObject().position.x > mapLimit) controls.getObject().position.x = mapLimit;
     if (controls.getObject().position.z < -mapLimit) controls.getObject().position.z = -mapLimit;
     if (controls.getObject().position.z > mapLimit) controls.getObject().position.z = mapLimit;
     
-    // アイテム収集チェック
     checkRedItemCollection();
-    
-    // 位置送信
     sendPositionUpdate();
-    
-    // UI更新
     updateUI();
-    
-    // レンダリング
     renderer.render(scene, camera);
     
-    // 赤いアイテムの回転アニメーション
     const time = Date.now() * 0.001;
     for (const id in redItems) {
         const item = redItems[id];
@@ -1709,7 +1548,6 @@ function animate() {
         item.position.y = item.userData.originalY + Math.sin(time * 2) * 0.3;
     }
     
-    // ランク表示をカメラの方向に向ける
     for (const id in players) {
         const player = players[id];
         if (player.rankDisplay) {
@@ -1718,17 +1556,14 @@ function animate() {
     }
 }
 
-// フライト移動処理
 function handleFlightMovement() {
     direction.set(0, 0, 0);
     
-    // WASD移動
     if (moveForward) direction.z -= 1;
     if (moveBackward) direction.z += 1;
     if (moveLeft) direction.x -= 1;
     if (moveRight) direction.x += 1;
     
-    // ジョイスティック入力
     if (joystickActive) {
         direction.x += joystickPosition.x;
         direction.z += joystickPosition.y;
@@ -1738,11 +1573,10 @@ function handleFlightMovement() {
         direction.normalize();
     }
     
-    const speed = 20.0; // フライト時は高速移動
+    const speed = 20.0;
     const deltaTime = 1/60;
     const currentPos = controls.getObject().position.clone();
     
-    // 水平移動
     if (direction.z !== 0) {
         const moveVector = new THREE.Vector3();
         controls.getObject().getWorldDirection(moveVector);
@@ -1762,33 +1596,26 @@ function handleFlightMovement() {
         currentPos.add(strafeVector);
     }
     
-    // 衝突チェックなしで移動
     controls.getObject().position.x = currentPos.x;
     controls.getObject().position.z = currentPos.z;
     
-    // 垂直移動（重力無効）
-    velocity.y *= 0.9; // 減衰
+    velocity.y *= 0.9;
     controls.getObject().position.y += velocity.y * deltaTime;
 }
 
-// 通常移動処理
 function handleNormalMovement() {
-    // プレイヤー移動の処理（完全修正版）
     const inputDirection = new THREE.Vector3();
     
-    // WASD移動（正しい方向）
-    if (moveForward) inputDirection.z -= 1; // W = 前進（カメラの前方向）
-    if (moveBackward) inputDirection.z += 1; // S = 後退（カメラの後方向）
-    if (moveLeft) inputDirection.x -= 1; // A = 左移動
-    if (moveRight) inputDirection.x += 1; // D = 右移動
+    if (moveForward) inputDirection.z -= 1;
+    if (moveBackward) inputDirection.z += 1;
+    if (moveLeft) inputDirection.x -= 1;
+    if (moveRight) inputDirection.x += 1;
     
-    // ジョイスティック入力の処理
     if (joystickActive) {
         inputDirection.x += joystickPosition.x;
         inputDirection.z += joystickPosition.y;
     }
     
-    // 方向の正規化
     if (inputDirection.length() > 0) {
         inputDirection.normalize();
     }
@@ -1796,7 +1623,6 @@ function handleNormalMovement() {
     const speed = 15.0;
     const deltaTime = 1/60;
     
-    // カメラの方向ベクトルを取得
     const forward = new THREE.Vector3();
     controls.getObject().getWorldDirection(forward);
     forward.y = 0;
@@ -1805,24 +1631,20 @@ function handleNormalMovement() {
     const right = new THREE.Vector3();
     right.crossVectors(forward, controls.getObject().up).normalize();
     
-    // 移動ベクトルを計算
     const moveVector = new THREE.Vector3();
     moveVector.addScaledVector(forward, inputDirection.z * speed * deltaTime);
     moveVector.addScaledVector(right, inputDirection.x * speed * deltaTime);
     
-    // 新しい位置を計算
     const currentPos = controls.getObject().position.clone();
     const newPos = currentPos.clone().add(moveVector);
-    newPos.y = currentPos.y; // Y座標は移動では変更しない
+    newPos.y = currentPos.y;
     
-    // 衝突チェック
     if (!checkCollisions(newPos)) {
         controls.getObject().position.x = newPos.x;
         controls.getObject().position.z = newPos.z;
     }
     
-    // 重力とジャンプの処理
-    velocity.y -= 50.0; // 重力
+    velocity.y -= 50.0;
     
     if (controls.getObject().position.y <= 1.7) {
         velocity.y = 0;
@@ -1830,16 +1652,13 @@ function handleNormalMovement() {
         canJump = true;
     }
     
-    // 垂直移動
     controls.getObject().position.y += velocity.y * deltaTime;
 }
 
-// ウィンドウリサイズイベント
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ゲーム開始
 animate();
