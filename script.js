@@ -1,10 +1,8 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-// WebSocket接続の修正
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
-
 
 let myId = null;
 let players = {};
@@ -385,6 +383,7 @@ function createInfinityFortressBuildings() {
 }
 
 createInfinityFortressBuildings();
+
 function createUI() {
     const uiContainer = document.createElement('div');
     uiContainer.id = 'game-ui';
@@ -422,8 +421,8 @@ function createUI() {
                 鬼時間: <span id="oni-duration">00:00</span></div>
         </div>
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
-            <div>W: 前進 | S: 後退 | A: 左 | D: 右 | Space: ジャンプ</div>
-            <div>マウス: 視点 | クリック: 雪玉/鬼交代</div>
+            <div>WASD/矢印: 移動 | Space: ジャンプ | マウス: 視点</div>
+            <div>クリック: 雪玉/鬼交代</div>
         </div>
     `;
     
@@ -651,20 +650,20 @@ function createSnowballMesh(id, data) {
     const startPos = new THREE.Vector3(data.x, data.y, data.z);
     const endPos = new THREE.Vector3(data.targetX, data.targetY, data.targetZ);
     
-    function animateSnowball() {  // ← 名前を変更
+    function animateSnowball() {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
         
         if (progress < 1) {
             mesh.position.lerpVectors(startPos, endPos, progress);
             mesh.position.y += Math.sin(progress * Math.PI) * 3;
-            requestAnimationFrame(animateSnowball);  // ← ここも変更
+            requestAnimationFrame(animateSnowball);
         } else {
             scene.remove(mesh);
             delete snowballs[id];
         }
     }
-    animateSnowball();  // ← ここも変更
+    animateSnowball();
     
     return mesh;
 }
@@ -774,9 +773,11 @@ function createSettingsUI() {
         if (isTabletMode) {
             toggle.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
             toggle.innerHTML = '📱 Tablet Mode (ON)';
+            createTouchControls();
         } else {
             toggle.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
             toggle.innerHTML = '📱 Tablet Mode';
+            removeTouchControls();
         }
         document.getElementById('settings-menu').style.display = 'none';
     });
@@ -798,6 +799,148 @@ function createSettingsUI() {
     });
 }
 
+function createTouchControls() {
+    const joystickLeft = document.createElement('div');
+    joystickLeft.id = 'joystick-left';
+    joystickLeft.style.cssText = `
+        position: fixed;
+        bottom: 50px;
+        left: 50px;
+        width: 120px;
+        height: 120px;
+        background: rgba(255, 255, 255, 0.3);
+        border: 3px solid rgba(255, 255, 255, 0.5);
+        border-radius: 50%;
+        z-index: 1000;
+    `;
+    
+    const stickLeft = document.createElement('div');
+    stickLeft.id = 'stick-left';
+    stickLeft.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 50px;
+        height: 50px;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 50%;
+    `;
+    joystickLeft.appendChild(stickLeft);
+    document.body.appendChild(joystickLeft);
+    
+    const jumpButton = document.createElement('div');
+    jumpButton.id = 'jump-button';
+    jumpButton.innerHTML = '↑';
+    jumpButton.style.cssText = `
+        position: fixed;
+        bottom: 50px;
+        right: 50px;
+        width: 80px;
+        height: 80px;
+        background: rgba(0, 255, 0, 0.5);
+        border: 3px solid rgba(0, 255, 0, 0.7);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+        z-index: 1000;
+        user-select: none;
+    `;
+    document.body.appendChild(jumpButton);
+    
+    const attackButton = document.createElement('div');
+    attackButton.id = 'attack-button';
+    attackButton.innerHTML = '⚔️';
+    attackButton.style.cssText = `
+        position: fixed;
+        bottom: 150px;
+        right: 50px;
+        width: 80px;
+        height: 80px;
+        background: rgba(255, 0, 0, 0.5);
+        border: 3px solid rgba(255, 0, 0, 0.7);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+        z-index: 1000;
+        user-select: none;
+    `;
+    document.body.appendChild(attackButton);
+    
+    let touchStartX = 0;
+    let touchStartY = 0;
+    
+    joystickLeft.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = joystickLeft.getBoundingClientRect();
+        touchStartX = rect.left + rect.width / 2;
+        touchStartY = rect.top + rect.height / 2;
+    });
+    
+    joystickLeft.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
+        
+        const distance = Math.min(35, Math.sqrt(deltaX * deltaX + deltaY * deltaY));
+        const angle = Math.atan2(deltaY, deltaX);
+        
+        const stickX = Math.cos(angle) * distance;
+        const stickY = Math.sin(angle) * distance;
+        
+        stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
+        
+        moveForward = deltaY < -10;
+        moveBackward = deltaY > 10;
+        moveLeft = deltaX < -10;
+        moveRight = deltaX > 10;
+    });
+    
+    joystickLeft.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stickLeft.style.transform = 'translate(-50%, -50%)';
+        moveForward = false;
+        moveBackward = false;
+        moveLeft = false;
+        moveRight = false;
+    });
+    
+    jumpButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (canJump) {
+            velocity.y += 18;
+            canJump = false;
+        }
+    });
+    
+    attackButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (myId === oniId && gameStarted) {
+            checkSwordHit();
+        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
+            throwSnowball();
+        }
+    });
+}
+
+function removeTouchControls() {
+    const joystick = document.getElementById('joystick-left');
+    const jump = document.getElementById('jump-button');
+    const attack = document.getElementById('attack-button');
+    
+    if (joystick) joystick.remove();
+    if (jump) jump.remove();
+    if (attack) attack.remove();
+}
+
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
 controls.getObject().position.set(0, 1.7, 0);
@@ -814,10 +957,16 @@ const direction = new THREE.Vector3();
 document.addEventListener('click', () => {
     if (!document.pointerLockElement) {
         document.body.requestPointerLock();
-    } else if (myId === oniId && gameStarted) {
-        checkSwordHit();
-    } else if (canThrowSnowball && myId !== oniId && gameStarted) {
-        throwSnowball();
+    }
+});
+
+document.addEventListener('mousedown', (e) => {
+    if (document.pointerLockElement && e.button === 0) {
+        if (myId === oniId && gameStarted) {
+            checkSwordHit();
+        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
+            throwSnowball();
+        }
     }
 });
 
@@ -859,15 +1008,27 @@ function throwSnowball() {
 document.addEventListener('keydown', (event) => {
     if (event.repeat) return;
     switch (event.code) {
-        case 'KeyW': moveForward = true; break;
-        case 'KeyA': moveLeft = true; break;
-        case 'KeyS': moveBackward = true; break;
-        case 'KeyD': moveRight = true; break;
+        case 'KeyW':
+        case 'ArrowUp':
+            moveForward = true;
+            break;
+        case 'KeyA':
+        case 'ArrowLeft':
+            moveLeft = true;
+            break;
+        case 'KeyS':
+        case 'ArrowDown':
+            moveBackward = true;
+            break;
+        case 'KeyD':
+        case 'ArrowRight':
+            moveRight = true;
+            break;
         case 'Space':
             event.preventDefault();
             if (flightEnabled && isFlying) {
                 velocity.y += 15;
-            } else if (canJump && gameStarted && isSpawned) {
+            } else if (canJump) {
                 velocity.y += 18;
                 canJump = false;
             }
@@ -886,10 +1047,22 @@ document.addEventListener('keydown', (event) => {
 
 document.addEventListener('keyup', (event) => {
     switch (event.code) {
-        case 'KeyW': moveForward = false; break;
-        case 'KeyA': moveLeft = false; break;
-        case 'KeyS': moveBackward = false; break;
-        case 'KeyD': moveRight = false; break;
+        case 'KeyW':
+        case 'ArrowUp':
+            moveForward = false;
+            break;
+        case 'KeyA':
+        case 'ArrowLeft':
+            moveLeft = false;
+            break;
+        case 'KeyS':
+        case 'ArrowDown':
+            moveBackward = false;
+            break;
+        case 'KeyD':
+        case 'ArrowRight':
+            moveRight = false;
+            break;
     }
 });
 
@@ -900,9 +1073,8 @@ function sendPositionUpdate() {
     if (!isConnected || !myId) return;
     const currentTime = performance.now();
     const currentPosition = controls.getObject().position;
-    const shouldSend = gameStarted || (isFlying && flightEnabled);
     
-    if (shouldSend && currentTime - lastSentTime > 100 && currentPosition.distanceTo(lastSentPosition) > 0.1) {
+    if (currentTime - lastSentTime > 50 && currentPosition.distanceTo(lastSentPosition) > 0.1) {
         ws.send(JSON.stringify({ type: 'move', id: myId, x: currentPosition.x, y: currentPosition.y, z: currentPosition.z }));
         lastSentPosition.copy(currentPosition);
         lastSentTime = currentTime;
@@ -1039,16 +1211,14 @@ function animate() {
     
     if (isFlying && flightEnabled) {
         handleFlightMovement();
-    } else if (!gameStarted || !isSpawned) {
-        if (waitingForPlayers) {
-            if (controls.getObject().position.y !== 1.7) {
-                controls.getObject().position.y = 1.7;
-            }
-            velocity.set(0, 0, 0);
-            canJump = true;
-            handleNormalMovement();
+    } else if (waitingForPlayers || !gameStarted) {
+        if (controls.getObject().position.y !== 1.7) {
+            controls.getObject().position.y = 1.7;
         }
-    } else {
+        velocity.set(0, 0, 0);
+        canJump = true;
+        handleNormalMovement();
+    } else if (gameStarted && isSpawned) {
         handleNormalMovement();
         
         const mapLimit = 98;
@@ -1111,7 +1281,7 @@ function handleFlightMovement() {
         currentPos.add(strafeVector);
     }
     
-  controls.getObject().position.x = currentPos.x;
+    controls.getObject().position.x = currentPos.x;
     controls.getObject().position.z = currentPos.z;
     velocity.y *= 0.9;
     controls.getObject().position.y += velocity.y * (1/60);
