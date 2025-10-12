@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-const ws = new WebSocket(`wss://${window.location.host}`);
+// WebSocket接続の修正
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
+
+
 let myId = null;
 let players = {};
 let redItems = {};
@@ -647,20 +651,20 @@ function createSnowballMesh(id, data) {
     const startPos = new THREE.Vector3(data.x, data.y, data.z);
     const endPos = new THREE.Vector3(data.targetX, data.targetY, data.targetZ);
     
-    function animate() {
+    function animateSnowball() {  // ← 名前を変更
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
         
         if (progress < 1) {
             mesh.position.lerpVectors(startPos, endPos, progress);
             mesh.position.y += Math.sin(progress * Math.PI) * 3;
-            requestAnimationFrame(animate);
+            requestAnimationFrame(animateSnowball);  // ← ここも変更
         } else {
             scene.remove(mesh);
             delete snowballs[id];
         }
     }
-    animate();
+    animateSnowball();  // ← ここも変更
     
     return mesh;
 }
