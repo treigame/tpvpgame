@@ -1,4 +1,672 @@
-// script.js の続き (前半部分の後に追加)
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
+
+let myId = null;
+let players = {};
+let redItems = {};
+let snowballs = {};
+let oniId = null;
+let isConnected = false;
+let canThrowSnowball = false;
+let showExclamation = false;
+let gameStarted = false;
+let gameCountdown = -1;
+let waitingForPlayers = false;
+let isSpawned = false;
+let playerRank = null;
+let isFlying = false;
+let flightEnabled = false;
+
+let gameState = {
+    score: 0,
+    redItemsCollected: 0,
+    timeAsOni: 0,
+    timeAlive: 0,
+    gameStartTime: Date.now(),
+    oniStartTime: null,
+    minimapCanvas: null,
+    minimapCtx: null
+};
+
+let isTabletMode = false;
+
+ws.onopen = () => {
+    console.log('WebSocket接続が確立されました');
+    isConnected = true;
+    ws.send(JSON.stringify({ type: 'get_id' }));
+};
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    
+    if (data.type === 'init') {
+        myId = data.id;
+        oniId = data.oniId;
+        gameStarted = data.gameStarted || false;
+        waitingForPlayers = data.waitingForPlayers || false;
+        
+        createUI();
+        createSettingsUI();
+        
+        if (!gameStarted && waitingForPlayers) {
+            controls.getObject().position.set(0, 1.7, 0);
+            isSpawned = false;
+            showMessage('他のプレイヤーを待っています...', 'info', 3000);
+        } else if (gameStarted) {
+            controls.getObject().position.set(0, 1.7, 0);
+            isSpawned = true;
+            canJump = true;
+        }
+        
+        if (myId === oniId && gameStarted) {
+            gameState.oniStartTime = Date.now();
+            addSword(camera);
+        }
+        
+        for (const id in data.players) {
+            if (id !== myId) createPlayerMesh(id, data.players[id]);
+        }
+        
+        for (const id in data.redItems || {}) {
+            createRedItemMesh(id, data.redItems[id]);
+        }
+        
+        updateUI();
+    } else if (data.type === 'waiting_for_players') {
+        waitingForPlayers = true;
+        gameStarted = false;
+        controls.getObject().position.set(0, 1.7, 0);
+        isSpawned = false;
+        showMessage(`プレイヤー待機中 (${data.currentPlayers}/3)`, 'info', 2000);
+    } else if (data.type === 'game_countdown') {
+        gameCountdown = data.countdown;
+        if (data.countdown > 0) {
+            showMessage(`ゲーム開始まで ${data.countdown}秒`, 'info', 1000);
+            if (controls.getObject().position.y > 10) {
+                controls.getObject().position.y = 1.7;
+                velocity.set(0, 0, 0);
+                canJump = true;
+            }
+        } else {
+            showMessage('START!', 'success', 1500);
+            startGame();
+        }
+    } else if (data.type === 'player_update') {
+        if (data.id !== myId) {
+            if (!players[data.id]) {
+                createPlayerMesh(data.id, data);
+            } else {
+                const player = players[data.id];
+                const targetPos = new THREE.Vector3(data.x, data.y, data.z);
+                player.position.lerp(targetPos, 0.3);
+            }
+        }
+    } else if (data.type === 'remove_player') {
+        if (players[data.id]) {
+            scene.remove(players[data.id]);
+            delete players[data.id];
+        }
+    } else if (data.type === 'red_item_collected') {
+        if (redItems[data.itemId]) {
+            scene.remove(redItems[data.itemId]);
+            delete redItems[data.itemId];
+        }
+        if (data.playerId === myId) {
+            gameState.redItemsCollected++;
+            gameState.score += 10;
+            if (gameState.redItemsCollected >= 8) {
+                canThrowSnowball = true;
+                showMessage('雪玉が投げられます！', 'success', 3000);
+            }
+        }
+    } else if (data.type === 'snowball_thrown') {
+        createSnowballMesh(data.snowballId, data.snowball);
+    } else if (data.type === 'snowball_hit') {
+        if (snowballs[data.snowballId]) {
+            scene.remove(snowballs[data.snowballId]);
+            delete snowballs[data.snowballId];
+        }
+        if (data.hitPlayerId === oniId) {
+            showMessage('雪玉が鬼に命中！', 'success', 5000);
+            setTimeout(() => location.reload(), 3000);
+        }
+    } else if (data.type === 'items_respawned') {
+        for (const id in redItems) {
+            scene.remove(redItems[id]);
+        }
+        redItems = {};
+        for (const id in data.redItems) {
+            createRedItemMesh(id, data.redItems[id]);
+        }
+    } else if (data.type === 'item_respawned') {
+        createRedItemMesh(data.itemId, data.item);
+    } else if (data.type === 'show_exclamation') {
+        if (data.playerId === myId && myId !== oniId) {
+            showExclamation = true;
+            showExclamationMark();
+        }
+    } else if (data.type === 'hide_exclamation') {
+        if (data.playerId === myId) {
+            showExclamation = false;
+            hideExclamationMark();
+        }
+    } else if (data.type === 'oni_changed') {
+        const oldOni = oniId;
+        oniId = data.oniId;
+        
+        if (oldOni === myId && gameState.oniStartTime) {
+            gameState.timeAsOni += Date.now() - gameState.oniStartTime;
+            gameState.oniStartTime = null;
+        }
+        if (oniId === myId) {
+            gameState.oniStartTime = Date.now();
+        }
+        
+        if (oldOni === myId) {
+            removeSword(camera);
+        } else if (players[oldOni] && players[oldOni].sword) {
+            removeSword(players[oldOni]);
+        }
+        
+        if (oniId === myId) {
+            addSword(camera);
+            canThrowSnowball = false;
+            gameState.redItemsCollected = 0;
+        } else if (players[oniId] && !players[oniId].sword) {
+            addSword(players[oniId]);
+        }
+        
+        updatePlayerColors();
+        updateUI();
+    } else if (data.type === 'player_rank_updated') {
+        if (data.playerId !== myId && players[data.playerId]) {
+            if (data.rank) {
+                addRankDisplay(players[data.playerId], data.rank);
+            } else {
+                removeRankDisplay(players[data.playerId]);
+            }
+        }
+    }
+};
+
+ws.onclose = () => {
+    console.log('WebSocket接続が切断されました');
+    isConnected = false;
+};
+
+ws.onerror = (error) => {
+    console.error('WebSocket エラー:', error);
+    isConnected = false;
+};
+
+function startGame() {
+    gameStarted = true;
+    gameCountdown = -1;
+    waitingForPlayers = false;
+    isSpawned = true;
+    controls.getObject().position.set(0, 1.7, 0);
+    velocity.set(0, 0, 0);
+    canJump = true;
+    showMessage('ゲーム開始！', 'success', 2000);
+}
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8B7355, 80, 200);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffe4b5, 1.2);
+directionalLight.position.set(20, 50, 20);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+scene.add(directionalLight);
+
+const planeGeometry = new THREE.PlaneGeometry(200, 200);
+const canvas = document.createElement('canvas');
+canvas.width = 512;
+canvas.height = 512;
+const ctx = canvas.getContext('2d');
+
+const baseColor = '#8B7355';
+ctx.fillStyle = baseColor;
+ctx.fillRect(0, 0, 512, 512);
+
+for (let i = 0; i < 50; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const width = 2 + Math.random() * 8;
+    const height = 20 + Math.random() * 100;
+    const opacity = 0.1 + Math.random() * 0.2;
+    ctx.fillStyle = `rgba(101, 67, 33, ${opacity})`;
+    ctx.fillRect(x, y, width, height);
+}
+
+for (let i = 0; i < 20; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const radius = 5 + Math.random() * 15;
+    ctx.fillStyle = `rgba(80, 50, 20, ${0.2 + Math.random() * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+const woodTexture = new THREE.CanvasTexture(canvas);
+woodTexture.wrapS = THREE.RepeatWrapping;
+woodTexture.wrapT = THREE.RepeatWrapping;
+woodTexture.repeat.set(20, 20);
+
+const planeMaterial = new THREE.MeshStandardMaterial({ 
+    map: woodTexture,
+    roughness: 0.9,
+    metalness: 0.0
+});
+const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+plane.rotation.x = -Math.PI / 2;
+plane.position.y = -1;
+plane.receiveShadow = true;
+scene.add(plane);
+
+const WALL_SIZE = 200;
+const WALL_HEIGHT = 20;
+const WALL_THICKNESS = 4;
+
+const wallMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x8B6F47,
+    roughness: 0.8,
+    metalness: 0.1
+});
+
+const walls = [];
+const blocks = [];
+
+const wall1 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, WALL_THICKNESS), wallMaterial);
+wall1.position.set(0, (WALL_HEIGHT / 2) - 1, -WALL_SIZE / 2);
+wall1.receiveShadow = true;
+wall1.castShadow = true;
+scene.add(wall1);
+walls.push(wall1);
+blocks.push(wall1);
+
+const wall2 = new THREE.Mesh(new THREE.BoxGeometry(WALL_SIZE, WALL_HEIGHT, WALL_THICKNESS), wallMaterial);
+wall2.position.set(0, (WALL_HEIGHT / 2) - 1, WALL_SIZE / 2);
+wall2.receiveShadow = true;
+wall2.castShadow = true;
+scene.add(wall2);
+walls.push(wall2);
+blocks.push(wall2);
+
+const wall3 = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+wall3.position.set(-WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
+wall3.receiveShadow = true;
+wall3.castShadow = true;
+scene.add(wall3);
+walls.push(wall3);
+blocks.push(wall3);
+
+const wall4 = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WALL_HEIGHT, WALL_SIZE), wallMaterial);
+wall4.position.set(WALL_SIZE / 2, (WALL_HEIGHT / 2) - 1, 0);
+wall4.receiveShadow = true;
+wall4.castShadow = true;
+scene.add(wall4);
+walls.push(wall4);
+blocks.push(wall4);
+
+function createInfinityFortressBuildings() {
+    const buildingMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x8B6F47,
+        roughness: 0.7,
+        metalness: 0.2
+    });
+    
+    const accentMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xd4af37,
+        roughness: 0.3,
+        metalness: 0.7,
+        emissive: 0x8B7500,
+        emissiveIntensity: 0.2
+    });
+
+    const buildings = [
+        { pos: [0, 8, 0], size: [15, 16, 15], material: buildingMaterial },
+        { pos: [0, 18, 0], size: [10, 6, 10], material: accentMaterial },
+        { pos: [25, 5, 15], size: [10, 10, 8], rotation: [0, 0.3, 0], material: buildingMaterial },
+        { pos: [-25, 6, 20], size: [12, 12, 10], rotation: [0, -0.4, 0.1], material: buildingMaterial },
+        { pos: [30, 7, -25], size: [8, 14, 12], rotation: [0, 0.5, -0.1], material: buildingMaterial },
+        { pos: [-20, 5, -30], size: [14, 10, 8], rotation: [0, -0.3, 0], material: buildingMaterial },
+        { pos: [45, 4, 45], size: [10, 8, 10], material: buildingMaterial },
+        { pos: [45, 10, 45], size: [8, 6, 8], material: accentMaterial },
+        { pos: [-45, 5, 45], size: [12, 10, 12], material: buildingMaterial },
+        { pos: [-45, 12, 45], size: [9, 5, 9], material: accentMaterial },
+        { pos: [15, 3, 50], size: [6, 6, 20], material: buildingMaterial },
+        { pos: [-15, 3, 50], size: [6, 6, 20], material: buildingMaterial },
+        { pos: [0, 3, 65], size: [40, 6, 6], material: buildingMaterial },
+        { pos: [60, 6, 20], size: [10, 12, 15], rotation: [0, 0.2, 0], material: buildingMaterial },
+        { pos: [-60, 5, -20], size: [15, 10, 10], rotation: [0, -0.3, 0], material: buildingMaterial },
+        { pos: [50, 4, -50], size: [12, 8, 12], material: buildingMaterial },
+        { pos: [-50, 7, 50], size: [10, 14, 10], material: buildingMaterial },
+        { pos: [70, 8, 0], size: [8, 16, 8], material: accentMaterial },
+        { pos: [-70, 8, 0], size: [8, 16, 8], material: accentMaterial },
+        { pos: [0, 8, 70], size: [8, 16, 8], material: accentMaterial },
+        { pos: [0, 8, -70], size: [8, 16, 8], material: accentMaterial }
+    ];
+
+    buildings.forEach((building) => {
+        const geometry = new THREE.BoxGeometry(...building.size);
+        const mesh = new THREE.Mesh(geometry, building.material);
+        mesh.position.set(...building.pos);
+        if (building.rotation) mesh.rotation.set(...building.rotation);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        blocks.push(mesh);
+        
+        if (Math.random() > 0.6) {
+            const accentGeom = new THREE.BoxGeometry(building.size[0] * 1.1, 0.5, building.size[2] * 1.1);
+            const accent = new THREE.Mesh(accentGeom, accentMaterial);
+            accent.position.set(building.pos[0], building.pos[1] + building.size[1]/2, building.pos[2]);
+            accent.castShadow = true;
+            scene.add(accent);
+        }
+    });
+}
+
+createInfinityFortressBuildings();
+
+function createUI() {
+    const uiContainer = document.createElement('div');
+    uiContainer.id = 'game-ui';
+    uiContainer.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 16px;
+        z-index: 1000;
+        pointer-events: none;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #00ff00;
+        min-width: 200px;
+    `;
+    
+    uiContainer.innerHTML = `
+        <div id="player-info">
+            <div>プレイヤー: <span id="player-id">${myId}</span></div>
+            <div>役割: <span id="role">${myId === oniId ? '👹 鬼' : '🏃 逃走者'}</span></div>
+            <div>スコア: <span id="score">${gameState.score}</span></div>
+            <div id="red-items-count" style="display: ${myId !== oniId ? 'block' : 'none'}">
+                赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/8
+            </div>
+            <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
+                雪玉投擲可能！
+            </div>
+        </div>
+        <div id="timer-info" style="margin-top: 10px;">
+            <div>ゲーム時間: <span id="game-time">00:00</span></div>
+            <div id="oni-time" style="display: ${myId === oniId ? 'block' : 'none'}">
+                鬼時間: <span id="oni-duration">00:00</span></div>
+        </div>
+        <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
+            <div>WASD/矢印: 移動 | Space: ジャンプ | マウス: 視点</div>
+            <div>クリック: 雪玉/鬼交代</div>
+        </div>
+    `;
+    
+    document.body.appendChild(uiContainer);
+    createMinimap();
+}
+
+function createMinimap() {
+    const minimapContainer = document.createElement('div');
+    minimapContainer.id = 'minimap';
+    minimapContainer.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 150px;
+        height: 150px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 2px solid #ffffff;
+        border-radius: 10px;
+        z-index: 1000;
+    `;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 146;
+    canvas.height = 146;
+    canvas.style.cssText = 'position: absolute; top: 2px; left: 2px; border-radius: 8px;';
+    
+    minimapContainer.appendChild(canvas);
+    document.body.appendChild(minimapContainer);
+    
+    gameState.minimapCanvas = canvas;
+    gameState.minimapCtx = canvas.getContext('2d');
+}
+
+function createPlayerMesh(id, data) {
+    const group = new THREE.Group();
+    
+    const bodyGeometry = new THREE.CapsuleGeometry(0.8, 1.6);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ 
+        color: id === oniId ? 0x0000ff : 0x00ff00,
+        roughness: 0.4,
+        metalness: 0.1
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.castShadow = true;
+    group.add(body);
+    group.bodyMesh = body;
+    
+    const headGeometry = new THREE.SphereGeometry(0.5);
+    const headMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffdbac,
+        roughness: 0.6,
+        metalness: 0.0
+    });
+    const head = new THREE.Mesh(headGeometry, headMaterial);
+    head.position.y = 1.5;
+    head.castShadow = true;
+    group.add(head);
+    
+    group.position.set(data.x, data.y, data.z);
+    scene.add(group);
+    players[id] = group;
+    
+    if (id === oniId) {
+        addSword(group);
+    }
+    
+    return group;
+}
+
+function updatePlayerColors() {
+    for (const id in players) {
+        const player = players[id];
+        if (player.bodyMesh) {
+            player.bodyMesh.material.color.setHex(id === oniId ? 0x0000ff : 0x00ff00);
+        }
+    }
+}
+
+function addSword(mesh) {
+    if (mesh.sword) return;
+    
+    const swordGroup = new THREE.Group();
+    
+    const bladeGeometry = new THREE.BoxGeometry(0.1, 0.1, 1.5);
+    const bladeMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xc0c0c0,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+    blade.position.z = -0.75;
+    blade.castShadow = true;
+    swordGroup.add(blade);
+    
+    const handleGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.5);
+    const handleMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513,
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.z = 0.25;
+    handle.rotation.x = Math.PI / 2;
+    handle.castShadow = true;
+    swordGroup.add(handle);
+    
+    swordGroup.position.set(1.0, -1.2, -0.5);
+    swordGroup.rotation.x = Math.PI / 4;
+    swordGroup.rotation.y = -Math.PI / 6;
+    
+    mesh.add(swordGroup);
+    mesh.sword = swordGroup;
+}
+
+function removeSword(mesh) {
+    if (mesh.sword) {
+        mesh.remove(mesh.sword);
+        mesh.sword = null;
+    }
+}
+
+function addRankDisplay(mesh, rank) {
+    if (mesh.rankDisplay) return;
+    
+    const rankGroup = new THREE.Group();
+    const bgGeometry = new THREE.RingGeometry(0, 1.2, 16);
+    const bgMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8
+    });
+    const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+    bgMesh.rotation.x = -Math.PI / 2;
+    rankGroup.add(bgMesh);
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.font = 'bold 32px Arial';
+    context.textAlign = 'center';
+    context.fillText(rank, 128, 40);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const textMaterial = new THREE.MeshBasicMaterial({ 
+        map: texture,
+        transparent: true,
+        alphaTest: 0.1
+    });
+    
+    const textGeometry = new THREE.PlaneGeometry(2, 0.5);
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.y = 0.1;
+    rankGroup.add(textMesh);
+    
+    rankGroup.position.set(0, 3.5, 0);
+    rankGroup.lookAt(camera.position);
+    
+    mesh.add(rankGroup);
+    mesh.rankDisplay = rankGroup;
+}
+
+function removeRankDisplay(mesh) {
+    if (mesh.rankDisplay) {
+        mesh.remove(mesh.rankDisplay);
+        mesh.rankDisplay = null;
+    }
+}
+
+function createRedItemMesh(id, data) {
+    const geometry = new THREE.SphereGeometry(1.0, 16, 16);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 0.5,
+        roughness: 0.1,
+        metalness: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(data.x, data.y, data.z);
+    mesh.castShadow = true;
+    
+    const pointLight = new THREE.PointLight(0xff0000, 2, 10);
+    pointLight.position.copy(mesh.position);
+    scene.add(pointLight);
+    mesh.userData.light = pointLight;
+    
+    scene.add(mesh);
+    redItems[id] = mesh;
+    
+    mesh.scale.set(0.1, 0.1, 0.1);
+    const startTime = Date.now();
+    function appearEffect() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / 1000, 1);
+        const scale = 0.1 + (progress * 0.9);
+        mesh.scale.set(scale, scale, scale);
+        if (progress < 1) {
+            requestAnimationFrame(appearEffect);
+        }
+    }
+    appearEffect();
+    
+    return mesh;
+}
+
+function createSnowballMesh(id, data) {
+    const geometry = new THREE.SphereGeometry(0.3, 8, 8);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0x8a2be2,
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(data.x, data.y, data.z);
+    mesh.castShadow = true;
+    scene.add(mesh);
+    snowballs[id] = mesh;
+    
+    const startTime = Date.now();
+    const duration = 2000;
+    const startPos = new THREE.Vector3(data.x, data.y, data.z);
+    const endPos = new THREE.Vector3(data.targetX, data.targetY, data.targetZ);
+    
+    function animateSnowball() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        if (progress < 1) {
+            mesh.position.lerpVectors(startPos, endPos, progress);
+            mesh.position.y += Math.sin(progress * Math.PI) * 3;
+            requestAnimationFrame(animateSnowball);
+        } else {
+            scene.remove(mesh);
+            delete snowballs[id];
+        }
+    }
+    animateSnowball();
+    
+    return mesh;
+}
 
 function showExclamationMark() {
     let exclamation = document.getElementById('exclamation-mark');
@@ -102,22 +770,13 @@ function createSettingsUI() {
     document.getElementById('tablet-toggle').addEventListener('click', () => {
         isTabletMode = !isTabletMode;
         const toggle = document.getElementById('tablet-toggle');
-        const gameUI = document.getElementById('game-ui');
-        
         if (isTabletMode) {
             toggle.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
             toggle.innerHTML = '📱 Tablet Mode (ON)';
-            if (gameUI) {
-                gameUI.style.transform = 'scale(0.7)';
-                gameUI.style.transformOrigin = 'top left';
-            }
             createTouchControls();
         } else {
             toggle.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
             toggle.innerHTML = '📱 Tablet Mode';
-            if (gameUI) {
-                gameUI.style.transform = 'scale(1)';
-            }
             removeTouchControls();
         }
         document.getElementById('settings-menu').style.display = 'none';
@@ -552,13 +1211,13 @@ function animate() {
     
     if (isFlying && flightEnabled) {
         handleFlightMovement();
-    } else if (gameCountdown > 0 || waitingForPlayers) {
-        handleNormalMovement();
-        if (controls.getObject().position.y < 1.7) {
+    } else if (waitingForPlayers || !gameStarted) {
+        if (controls.getObject().position.y !== 1.7) {
             controls.getObject().position.y = 1.7;
-            velocity.y = 0;
-            canJump = true;
         }
+        velocity.set(0, 0, 0);
+        canJump = true;
+        handleNormalMovement();
     } else if (gameStarted && isSpawned) {
         handleNormalMovement();
         
@@ -570,13 +1229,6 @@ function animate() {
         if (pos.z > mapLimit) pos.z = mapLimit;
         
         checkRedItemCollection();
-    } else {
-        handleNormalMovement();
-        if (controls.getObject().position.y < 1.7) {
-            controls.getObject().position.y = 1.7;
-            velocity.y = 0;
-            canJump = true;
-        }
     }
     
     sendPositionUpdate();
@@ -667,7 +1319,7 @@ function handleNormalMovement() {
         controls.getObject().position.z = newPos.z;
     }
     
-    velocity.y -= 50.0 * deltaTime;
+    velocity.y -= 50.0;
     
     if (controls.getObject().position.y <= 1.7) {
         velocity.y = 0;
