@@ -16,13 +16,11 @@ const RED_ITEM_COUNT = 25;
 let playerCounter = 0;
 let snowballCounter = 0;
 
-// ゲーム状態管理
 let gameStarted = false;
 let waitingForPlayers = false;
 let countdownInterval = null;
-const MIN_PLAYERS = 3; // 最小プレイヤー数
+const MIN_PLAYERS = 3;
 
-// ゲーム統計
 let gameStats = {
     totalGames: 0,
     totalOniChanges: 0,
@@ -31,7 +29,6 @@ let gameStats = {
     startTime: Date.now()
 };
 
-// プレイヤーデータの検証関数
 function isValidPosition(x, y, z) {
     const BOUNDARY = 95;
     return x >= -BOUNDARY && x <= BOUNDARY && 
@@ -39,12 +36,10 @@ function isValidPosition(x, y, z) {
            y >= 0 && y <= 50;
 }
 
-// 静的ファイルの提供
 app.use(express.static(path.join(__dirname, '')));
 
 const port = process.env.PORT || 10000;
 
-// 建物と障害物の定義
 const buildingPositions = [
     { pos: [0, 4, 0], size: [12, 8, 12] },
     { pos: [20, 3, 20], size: [8, 6, 8] },
@@ -110,7 +105,6 @@ function generateSafePosition() {
     return { x: 0, z: 0 };
 }
 
-// ブロードキャスト関数
 function broadcast(message, excludeId = null) {
     const jsonMessage = JSON.stringify(message);
     wss.clients.forEach(client => {
@@ -124,7 +118,6 @@ function broadcast(message, excludeId = null) {
     });
 }
 
-// 特定のプレイヤーにメッセージを送信
 function sendToPlayer(playerId, message) {
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN && client.playerId === playerId) {
@@ -137,7 +130,6 @@ function sendToPlayer(playerId, message) {
     });
 }
 
-// 赤いアイテム生成関数
 function generateRedItems() {
     redItems = {};
     console.log('赤いアイテム生成開始...');
@@ -189,10 +181,8 @@ function generateRedItems() {
     console.log(`赤いアイテム生成完了: ${Object.keys(redItems).length}個`);
 }
 
-// 初期生成
 generateRedItems();
 
-// ゲーム状態管理（デバッグ強化版）
 function checkGameState() {
     const playerCount = Object.keys(players).length;
     console.log(`=== ゲーム状態チェック ===`);
@@ -201,7 +191,6 @@ function checkGameState() {
     console.log(`ゲーム開始済み: ${gameStarted}`);
     console.log(`待機中: ${waitingForPlayers}`);
     console.log(`カウントダウン実行中: ${countdownInterval !== null}`);
-    console.log(`プレイヤー一覧: ${Object.keys(players).join(', ')}`);
     
     if (!gameStarted && playerCount >= MIN_PLAYERS && !countdownInterval) {
         console.log(`✅ ゲーム開始条件達成！カウントダウンを開始します`);
@@ -223,13 +212,10 @@ function checkGameState() {
             currentPlayers: playerCount,
             requiredPlayers: MIN_PLAYERS
         });
-    } else {
-        console.log(`ℹ️ 状態変更なし - 現状維持`);
     }
     console.log(`========================`);
 }
 
-// ゲーム開始カウントダウン
 function startGameCountdown() {
     if (countdownInterval) {
         console.log('カウントダウンは既に実行中です');
@@ -241,15 +227,14 @@ function startGameCountdown() {
     
     console.log('ゲーム開始カウントダウン開始！');
     
-    // 全プレイヤーを空中にランダム配置
     for (const playerId in players) {
-        players[playerId].x = (Math.random() - 0.5) * 20;
-        players[playerId].y = 15;
-        players[playerId].z = (Math.random() - 0.5) * 20;
-        console.log(`プレイヤー ${playerId} を空中に配置: (${players[playerId].x.toFixed(1)}, 15, ${players[playerId].z.toFixed(1)})`);
+        const safePos = generateSafePosition();
+        players[playerId].x = safePos.x;
+        players[playerId].y = 1.7;
+        players[playerId].z = safePos.z;
+        console.log(`プレイヤー ${playerId} を地上に配置: (${players[playerId].x.toFixed(1)}, 1.7, ${players[playerId].z.toFixed(1)})`);
     }
     
-    // 最初のカウントダウンを即座に送信
     broadcast({
         type: 'game_countdown',
         countdown: countdown
@@ -274,15 +259,11 @@ function startGameCountdown() {
     }, 1000);
 }
 
-// ゲーム開始
 function startGame() {
     gameStarted = true;
     waitingForPlayers = false;
-    
-    // 鬼をランダム選択
     selectRandomOni();
     
-    // 全プレイヤーに開始を通知
     broadcast({
         type: 'game_countdown',
         countdown: 0
@@ -292,7 +273,6 @@ function startGame() {
     gameStats.totalGames++;
 }
 
-// 鬼の選択
 function selectRandomOni() {
     const playerIds = Object.keys(players);
     if (playerIds.length > 0) {
@@ -310,7 +290,6 @@ function selectRandomOni() {
     }
 }
 
-// ゲームリセット
 function resetGame() {
     console.log('ゲームをリセットします...');
     
@@ -322,7 +301,6 @@ function resetGame() {
         countdownInterval = null;
     }
     
-    // プレイヤー統計をリセット
     for (const playerId in players) {
         players[playerId].score = 0;
         players[playerId].itemsCollected = 0;
@@ -344,7 +322,6 @@ function resetGame() {
     console.log('ゲームリセット完了');
 }
 
-// プレイヤーの位置更新レート制限
 const playerUpdateLimits = new Map();
 const UPDATE_RATE_LIMIT = 20;
 
@@ -359,7 +336,6 @@ function canUpdatePlayer(playerId) {
     return false;
 }
 
-// 雪玉の当たり判定
 function checkSnowballHit(snowballId, snowball) {
     if (!snowballs[snowballId]) return;
     
@@ -393,27 +369,15 @@ function checkSnowballHit(snowballId, snowball) {
     return false;
 }
 
-// プレイヤーの安全な初期位置生成
 function generateSafeSpawnPosition() {
-    if (!gameStarted) {
-        // ゲーム開始前は空中に固定
-        return {
-            x: (Math.random() - 0.5) * 20,
-            y: 15,
-            z: (Math.random() - 0.5) * 20
-        };
-    } else {
-        // ゲーム中は地上にスポーン
-        const position = generateSafePosition();
-        return {
-            x: position.x,
-            y: 1.7,
-            z: position.z
-        };
-    }
+    const position = generateSafePosition();
+    return {
+        x: position.x,
+        y: 1.7,
+        z: position.z
+    };
 }
 
-// 鬼交代の近接チェック
 function checkOniProximity() {
     if (!oniId || Object.keys(players).length < 2 || !gameStarted) return;
     
@@ -429,7 +393,6 @@ function checkOniProximity() {
             Math.pow(oniPos.z - player.z, 2)
         );
         
-        // 3ユニット以内で感嘆符表示
         if (distance < 3) {
             sendToPlayer(playerId, {
                 type: 'show_exclamation',
@@ -444,12 +407,10 @@ function checkOniProximity() {
     }
 }
 
-// WebSocket接続処理
 wss.on('connection', (ws, req) => {
     const id = `player_${playerCounter++}`;
     const clientIP = req.socket.remoteAddress;
     
-    // プレイヤーの初期化
     const spawnPos = generateSafeSpawnPosition();
     players[id] = { 
         id: id, 
@@ -466,23 +427,17 @@ wss.on('connection', (ws, req) => {
     ws.playerId = id;
     console.log(`新しいプレイヤーが接続しました: ${id} (IP: ${clientIP}) at (${spawnPos.x.toFixed(1)}, ${spawnPos.y}, ${spawnPos.z.toFixed(1)})`);
     
-    // 最初のプレイヤーまたは鬼が不在でゲーム中の場合、鬼に設定
     if (gameStarted && (!oniId || Object.keys(players).length === 1)) {
         oniId = id;
         console.log(`${id} が鬼に設定されました`);
     }
     
-    // 接続完了後、少し遅延してゲーム状態をチェック
     ws.connectionEstablished = true;
-    console.log(`プレイヤー ${id} の接続が完了しました`);
     
-    // ゲーム状態をチェック（最後に実行）
     setTimeout(() => {
-        console.log(`遅延チェック開始（プレイヤー ${id} 用）`);
         checkGameState();
     }, 200);
     
-    // メッセージ処理
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
@@ -491,7 +446,6 @@ wss.on('connection', (ws, req) => {
                 case 'get_id':
                     console.log(`プレイヤー ${id} に初期化データを送信中...`);
                     
-                    // 初期化データを送信
                     const initData = { 
                         type: 'init', 
                         id: id, 
@@ -504,9 +458,6 @@ wss.on('connection', (ws, req) => {
                     
                     ws.send(JSON.stringify(initData));
                     
-                    console.log(`初期化データ送信完了: プレイヤー数=${Object.keys(players).length}, ゲーム状態=${gameStarted ? '進行中' : '待機中'}`);
-                    
-                    // 他のプレイヤーに新しいプレイヤーの参加を通知
                     broadcast({ 
                         type: 'player_update', 
                         id: id, 
@@ -515,27 +466,18 @@ wss.on('connection', (ws, req) => {
                         z: players[id].z 
                     }, id);
                     
-                    // ここでゲーム状態をチェック（重要！）
                     setTimeout(() => {
                         checkGameState();
                     }, 100);
                     break;
                     
                 case 'move':
-                    // スポーン済みなら移動許可（ゲーム開始前でも）
                     const player = players[data.id];
-                    if (!player || data.id !== id) {
-                        return;
-                    }
+                    if (!player || data.id !== id) return;
                     
-                    // レート制限チェック
-                    if (!canUpdatePlayer(data.id)) {
-                        return;
-                    }
+                    if (!canUpdatePlayer(data.id)) return;
                     
-                    // 位置データの検証
                     if (isValidPosition(data.x, data.y, data.z)) {
-                        // サーバー側でも衝突チェック
                         if (!isPositionInBlock(data.x, data.z, data.y)) {
                             const oldPos = { x: player.x, y: player.y, z: player.z };
                             
@@ -544,22 +486,19 @@ wss.on('connection', (ws, req) => {
                             player.z = parseFloat(data.z);
                             player.lastUpdate = Date.now();
                             
-                            // 移動距離をチェック（テレポート防止）
                             const moveDistance = Math.sqrt(
                                 Math.pow(player.x - oldPos.x, 2) + 
                                 Math.pow(player.z - oldPos.z, 2)
                             );
                             
-                            if (moveDistance > 10.0) { // 10ユニットまで許可（フライト考慮）
+                            if (moveDistance > 10.0) {
                                 console.log(`⚠️ プレイヤー ${id} の移動距離が異常: ${moveDistance.toFixed(2)}`);
-                                // 異常な移動は拒否して元の位置に戻す
                                 player.x = oldPos.x;
                                 player.y = oldPos.y;
                                 player.z = oldPos.z;
                                 return;
                             }
                             
-                            // 他のプレイヤーに位置更新を送信
                             const updateMessage = { 
                                 type: 'player_update', 
                                 id: data.id, 
@@ -574,12 +513,10 @@ wss.on('connection', (ws, req) => {
                     break;
                     
                 case 'set_rank':
-                    // ランク設定
                     if (data.playerId === id && data.rank === 'OWNER') {
                         playerRanks[id] = data.rank;
                         console.log(`プレイヤー ${id} にランク ${data.rank} を付与しました`);
                         
-                        // 全プレイヤーにランク更新を通知
                         broadcast({
                             type: 'player_rank_updated',
                             playerId: id,
@@ -591,11 +528,8 @@ wss.on('connection', (ws, req) => {
                 case 'collect_red_item':
                     if (!gameStarted) return;
                     
-                    console.log(`プレイヤー ${id} が赤いアイテム ${data.itemId} を取得しようとしています`);
                     if (redItems[data.itemId]) {
                         const itemPosition = { ...redItems[data.itemId] };
-                        
-                        console.log(`赤いアイテム ${data.itemId} を削除し、スコアを更新します`);
                         
                         delete redItems[data.itemId];
                         players[id].score += 10;
@@ -608,9 +542,6 @@ wss.on('connection', (ws, req) => {
                             playerId: id
                         });
                         
-                        console.log(`赤いアイテム ${data.itemId} が ${id} によって取得されました`);
-                        
-                        // 25秒後に再出現
                         setTimeout(() => {
                             const newItemId = `respawn_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                             let newPos;
@@ -644,9 +575,7 @@ wss.on('connection', (ws, req) => {
                             });
                         }, 25000);
                         
-                        // すべての赤いアイテムが取得された場合、新しいアイテムを生成
                         if (Object.keys(redItems).length === 0) {
-                            console.log('すべての赤いアイテムが取得されました。新しいアイテムを生成します。');
                             generateRedItems();
                             broadcast({ type: 'items_respawned', redItems: redItems });
                         }
@@ -677,14 +606,9 @@ wss.on('connection', (ws, req) => {
                             snowball: snowball
                         });
                         
-                        console.log(`雪玉 ${snowballId} が ${id} によって投げられました`);
-                        
-                        // 雪玉の当たり判定
                         setTimeout(() => {
                             if (checkSnowballHit(snowballId, snowball)) {
-                                // 命中した場合は既に処理済み
                             } else {
-                                // 外れた場合は雪玉を削除
                                 delete snowballs[snowballId];
                             }
                         }, 2000);
@@ -694,11 +618,9 @@ wss.on('connection', (ws, req) => {
                 case 'become_oni':
                     if (!gameStarted) return;
                     
-                    // ！マーククリックで鬼交代
                     if (data.playerId !== oniId && players[data.playerId]) {
                         const oldOni = oniId;
                         
-                        // 前の鬼の時間を記録
                         if (players[oldOni]) {
                             players[oldOni].totalOniTime += Date.now() - (players[oldOni].oniStartTime || Date.now());
                         }
@@ -708,18 +630,13 @@ wss.on('connection', (ws, req) => {
                         gameStats.totalOniChanges++;
                         
                         broadcast({ type: 'oni_changed', oniId: oniId });
-                        console.log(`！マーククリックで鬼が交代しました: ${oldOni} → ${oniId}`);
                     }
                     break;
                     
                 case 'tag_player':
                     if (!gameStarted) return;
                     
-                    // 直接タッチ・剣攻撃による鬼交代
-                    console.log(`鬼交代要求受信: 送信者=${data.id}, 鬼=${oniId}, ターゲット=${data.taggedId}`);
-                    
                     if (data.id === oniId && data.id === id && players[data.taggedId]) {
-                        // 距離チェック（チート防止）
                         const oniPos = players[oniId];
                         const targetPos = players[data.taggedId];
                         const distance = Math.sqrt(
@@ -730,7 +647,6 @@ wss.on('connection', (ws, req) => {
                         if (distance <= 5.0) {
                             const oldOni = oniId;
                             
-                            // 前の鬼の時間を記録
                             if (players[oldOni]) {
                                 players[oldOni].totalOniTime += Date.now() - (players[oldOni].oniStartTime || Date.now());
                                 players[oldOni].score += 100;
@@ -740,151 +656,68 @@ wss.on('connection', (ws, req) => {
                             players[oniId].oniStartTime = Date.now();
                             gameStats.totalOniChanges++;
                             
-                            // 全プレイヤーに鬼交代を通知
                             const changeMessage = { type: 'oni_changed', oniId: oniId };
                             broadcast(changeMessage);
-                            
-                            console.log(`鬼交代完了: ${oldOni} → ${oniId} (距離: ${distance.toFixed(2)})`);
-                        } else {
-                            console.log(`鬼交代要求却下: 距離が遠すぎます (${distance.toFixed(2)}ユニット)`);
                         }
                     }
                     break;
-                
-                case 'force_start_game':
-                    // 管理者用の強制ゲーム開始コマンド
-                    if (playerRanks[id] === 'OWNER') {
-                        console.log(`🔧 OWNER ${id} によってゲーム強制開始`);
-                        if (!gameStarted && !countdownInterval) {
-                            startGameCountdown();
-                        } else {
-                            console.log(`⚠️ ゲーム開始失敗: 既に開始済みまたはカウントダウン中`);
-                        }
-                    }
-                    break;
-                    
-                default:
-                    console.log(`未知のメッセージタイプ: ${data.type}`);
             }
         } catch (error) {
             console.error('メッセージの解析に失敗しました:', error);
         }
     });
 
-    // プレイヤー切断処理
     ws.on('close', () => {
         console.log(`プレイヤーが切断しました: ${id}`);
         
-        // プレイヤーデータを削除
         delete players[id];
         delete playerRanks[id];
         playerUpdateLimits.delete(id);
         
-        // 他のプレイヤーに切断を通知
         broadcast({ type: 'remove_player', id: id });
         
-        // 鬼が切断した場合の処理
         if (id === oniId) {
-            console.log(`鬼が切断しました: ${id}`);
             selectRandomOni();
         }
         
-        // ゲーム状態をチェック
         checkGameState();
-        
-        console.log(`現在のプレイヤー数: ${Object.keys(players).length}`);
     });
 
-    // エラー処理
     ws.on('error', (error) => {
         console.error(`プレイヤー ${id} でエラーが発生しました:`, error);
     });
 
-    // 接続のヘルスチェック
     ws.isAlive = true;
     ws.on('pong', () => {
         ws.isAlive = true;
     });
 });
 
-// 定期的な鬼の近接チェック（2秒間隔）
 const proximityCheckInterval = setInterval(() => {
     if (gameStarted) {
         checkOniProximity();
     }
 }, 2000);
 
-// 定期的なヘルスチェック（30秒間隔）
 const healthCheckInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
-            console.log(`非アクティブな接続を終了: ${ws.playerId}`);
             return ws.terminate();
         }
-        
         ws.isAlive = false;
         ws.ping();
     });
 }, 30000);
 
-// 非アクティブプレイヤーのクリーンアップ（2分間隔）
-const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    const INACTIVE_TIMEOUT = 5 * 60 * 1000; // 5分
-    
-    for (const playerId in players) {
-        const player = players[playerId];
-        if (now - player.lastUpdate > INACTIVE_TIMEOUT) {
-            console.log(`非アクティブなプレイヤーを削除: ${playerId}`);
-            delete players[playerId];
-            delete playerRanks[playerId];
-            playerUpdateLimits.delete(playerId);
-            broadcast({ type: 'remove_player', id: playerId });
-            
-            if (playerId === oniId) {
-                selectRandomOni();
-            }
-            
-            checkGameState();
-        }
-    }
-}, 2 * 60 * 1000);
-
-// ゲーム統計の定期出力（10分間隔）
-const statsInterval = setInterval(() => {
-    const uptime = Math.floor((Date.now() - gameStats.startTime) / 60000);
-    
-    console.log('=== ゲーム統計 ===');
-    console.log(`サーバー稼働時間: ${uptime}分`);
-    console.log(`プレイヤー数: ${Object.keys(players).length}`);
-    console.log(`ゲーム状態: ${gameStarted ? '進行中' : (waitingForPlayers ? '待機中' : '停止中')}`);
-    console.log(`赤いアイテム数: ${Object.keys(redItems).length}`);
-    console.log(`雪玉数: ${Object.keys(snowballs).length}`);
-    console.log(`現在の鬼: ${oniId}`);
-    console.log(`アクティブ接続数: ${wss.clients.size}`);
-    console.log(`総ゲーム数: ${gameStats.totalGames}`);
-    console.log(`総鬼交代回数: ${gameStats.totalOniChanges}`);
-    console.log(`総雪玉投擲数: ${gameStats.totalSnowballsThrown}`);
-    console.log(`総アイテム収集数: ${gameStats.totalItemsCollected}`);
-    console.log('========================');
-}, 10 * 60 * 1000);
-
-// グレースフルシャットダウン
 function gracefulShutdown() {
     console.log('サーバーをシャットダウンしています...');
     
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-    }
+    if (countdownInterval) clearInterval(countdownInterval);
     clearInterval(proximityCheckInterval);
     clearInterval(healthCheckInterval);
-    clearInterval(cleanupInterval);
-    clearInterval(statsInterval);
     
-    // すべてのクライアントに切断を通知
     broadcast({ type: 'server_shutdown', message: 'サーバーがメンテナンスのため停止します' });
     
-    // 接続を閉じる
     wss.clients.forEach((ws) => {
         ws.close();
     });
@@ -895,31 +728,14 @@ function gracefulShutdown() {
     });
 }
 
-// シグナルハンドリング
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
-// 未処理のエラーをキャッチ
-process.on('uncaughtException', (error) => {
-    console.error('未処理の例外:', error);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('未処理のPromise拒否:', reason);
-});
-
-// サーバー起動
 server.listen(port, () => {
     console.log(`=================================`);
     console.log(`🎮 3D鬼ごっこサーバーが起動しました`);
     console.log(`📍 ポート: ${port}`);
     console.log(`🌐 URL: http://localhost:${port}`);
     console.log(`👥 最小プレイヤー数: ${MIN_PLAYERS}人`);
-    console.log(`🎯 赤いアイテム数: ${RED_ITEM_COUNT}`);
-    console.log(`❄️ 雪玉システム有効`);
-    console.log(`👑 ランクシステム有効`);
-    console.log(`🏗️ 構造化された建物配置`);
-    console.log(`⚡ 3人待機・カウントダウンシステム`);
-    console.log(`📊 統計システム有効`);
     console.log(`=================================`);
 });

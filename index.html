@@ -112,13 +112,11 @@
             line-height: 1.4;
         }
         
-        /* ゲーム中のエラーメッセージ用 */
-        .error-message {
+        .error-message, .success-message {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(255, 0, 0, 0.9);
             color: white;
             padding: 20px;
             border-radius: 10px;
@@ -129,23 +127,9 @@
             display: none;
         }
         
-        .success-message {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 255, 0, 0.9);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 9999;
-            text-align: center;
-            font-size: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            display: none;
-        }
+        .error-message { background: rgba(255, 0, 0, 0.9); }
+        .success-message { background: rgba(0, 255, 0, 0.9); }
         
-        /* 画面中央の十字 */
         .crosshair {
             position: fixed;
             top: 50%;
@@ -157,8 +141,7 @@
             pointer-events: none;
         }
         
-        .crosshair::before,
-        .crosshair::after {
+        .crosshair::before, .crosshair::after {
             content: '';
             position: absolute;
             background-color: rgba(255, 255, 255, 0.8);
@@ -179,7 +162,6 @@
             transform: translateY(-50%);
         }
         
-        /* ゲーム情報パネル */
         .game-info-panel {
             position: fixed;
             bottom: 20px;
@@ -196,7 +178,6 @@
             min-width: 200px;
         }
         
-        /* パフォーマンス表示 */
         .performance-indicator {
             position: fixed;
             top: 20px;
@@ -211,50 +192,6 @@
             pointer-events: none;
         }
         
-        /* タブレット対応 */
-        @media (max-width: 768px) {
-            .game-instructions {
-                font-size: 12px;
-                padding: 10px 15px;
-                bottom: 10px;
-            }
-            
-            #game-ui {
-                font-size: 14px;
-                padding: 10px;
-                min-width: 150px;
-            }
-            
-            #minimap {
-                width: 120px;
-                height: 120px;
-            }
-            
-            .game-info-panel {
-                bottom: 10px;
-                right: 10px;
-                font-size: 11px;
-                min-width: 180px;
-            }
-        }
-        
-        /* タッチデバイス用のスタイル */
-        .touch-control {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            -webkit-touch-callout: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        
-        /* ！マークのアニメーション */
-        @keyframes pulse {
-            0% { transform: translate(-50%, -50%) scale(1); }
-            100% { transform: translate(-50%, -50%) scale(1.2); }
-        }
-        
-        /* 接続状態インジケーター */
         .connection-status {
             position: fixed;
             top: 10px;
@@ -268,22 +205,10 @@
             transition: all 0.3s ease;
         }
         
-        .connection-status.connected {
-            background: rgba(0, 255, 0, 0.8);
-            color: white;
-        }
+        .connection-status.connected { background: rgba(0, 255, 0, 0.8); color: white; }
+        .connection-status.disconnected { background: rgba(255, 0, 0, 0.8); color: white; }
+        .connection-status.connecting { background: rgba(255, 255, 0, 0.8); color: black; }
         
-        .connection-status.disconnected {
-            background: rgba(255, 0, 0, 0.8);
-            color: white;
-        }
-        
-        .connection-status.connecting {
-            background: rgba(255, 255, 0, 0.8);
-            color: black;
-        }
-        
-        /* ヘルプボタン */
         .help-button {
             position: fixed;
             bottom: 20px;
@@ -304,13 +229,10 @@
             transition: background-color 0.3s;
         }
         
-        .help-button:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
+        .help-button:hover { background: rgba(255, 255, 255, 0.2); }
     </style>
 </head>
 <body>
-    <!-- ローディング画面 -->
     <div id="loading-screen">
         <div class="loading-title">🏃‍♀️ 3D 鬼ごっこ 👹</div>
         <div class="loading-spinner"></div>
@@ -318,16 +240,10 @@
         <div class="loading-text" style="font-size: 0.9em;">クリックしてゲームを開始</div>
     </div>
 
-    <!-- 接続状態インジケーター -->
     <div id="connection-status" class="connection-status connecting">接続中...</div>
-
-    <!-- 画面中央の十字 -->
     <div class="crosshair"></div>
-
-    <!-- パフォーマンス表示 -->
     <div id="performance-indicator" class="performance-indicator">FPS: 60</div>
 
-    <!-- ゲーム操作説明 -->
     <div id="game-instructions" class="game-instructions">
         <div><strong>🎮 操作方法</strong></div>
         <div><strong>WASD:</strong> 移動 | <strong>Space:</strong> ジャンプ | <strong>マウス:</strong> 視点移動</div>
@@ -341,25 +257,18 @@
         </div>
     </div>
 
-    <!-- ゲーム情報パネル -->
     <div id="game-info-panel" class="game-info-panel">
         <div><strong>🎯 ゲーム目標</strong></div>
         <div>・逃走者: 赤いアイテム8個で雪玉投擲可能</div>
         <div>・鬼: 他プレイヤーをタッチして交代</div>
         <div>・雪玉が鬼に命中でゲーム終了</div>
-        <div style="margin-top: 8px; font-size: 11px; opacity: 0.7;">
-            建物や障害物を使って戦略的に行動しよう
-        </div>
+        <div style="margin-top: 8px; font-size: 11px; opacity: 0.7;">建物や障害物を使って戦略的に行動しよう</div>
     </div>
 
-    <!-- ヘルプボタン -->
     <div id="help-button" class="help-button" title="ヘルプ (F1)">?</div>
-
-    <!-- エラー・成功メッセージ -->
     <div id="error-message" class="error-message"></div>
     <div id="success-message" class="success-message"></div>
 
-    <!-- Three.js インポートマップ -->
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -371,175 +280,90 @@
     </script>
 
     <script>
-        // ローディング画面の管理
         let gameLoaded = false;
         let userInteracted = false;
         let connectionStatus = 'connecting';
-
-        // パフォーマンス監視
         let lastFrameTime = performance.now();
         let frameCount = 0;
         let fps = 60;
 
-        // 接続状態の更新
         function updateConnectionStatus(status) {
             connectionStatus = status;
             const indicator = document.getElementById('connection-status');
-            
             indicator.className = `connection-status ${status}`;
-            
             switch(status) {
-                case 'connected':
-                    indicator.textContent = '🟢 接続済み';
-                    break;
-                case 'disconnected':
-                    indicator.textContent = '🔴 切断';
-                    break;
-                case 'connecting':
-                    indicator.textContent = '🟡 接続中...';
-                    break;
+                case 'connected': indicator.textContent = '🟢 接続済み'; break;
+                case 'disconnected': indicator.textContent = '🔴 切断'; break;
+                case 'connecting': indicator.textContent = '🟡 接続中...'; break;
             }
         }
 
-        // パフォーマンス監視
         function updatePerformance() {
             frameCount++;
             const currentTime = performance.now();
-            
             if (currentTime - lastFrameTime >= 1000) {
                 fps = Math.round((frameCount * 1000) / (currentTime - lastFrameTime));
                 frameCount = 0;
                 lastFrameTime = currentTime;
-                
                 const indicator = document.getElementById('performance-indicator');
                 if (indicator) {
                     indicator.textContent = `FPS: ${fps}`;
-                    
-                    // FPSに応じて色を変更
-                    if (fps >= 50) {
-                        indicator.style.color = '#00ff00';
-                    } else if (fps >= 30) {
-                        indicator.style.color = '#ffff00';
-                    } else {
-                        indicator.style.color = '#ff0000';
-                    }
-                }
-                
-                // 低FPSの警告
-                if (fps < 20 && gameLoaded) {
-                    console.warn(`低FPS検出: ${fps}fps - パフォーマンスが低下しています`);
+                    indicator.style.color = fps >= 50 ? '#00ff00' : fps >= 30 ? '#ffff00' : '#ff0000';
                 }
             }
-            
             requestAnimationFrame(updatePerformance);
         }
 
-        // ユーザーインタラクションを待機
         function waitForUserInteraction() {
             document.addEventListener('click', function startGame() {
                 if (!userInteracted) {
                     userInteracted = true;
                     document.removeEventListener('click', startGame);
-                    
-                    if (gameLoaded) {
-                        hideLoadingScreen();
-                    } else {
-                        document.querySelector('.loading-text').textContent = 'ゲームを開始しています...';
-                    }
+                    if (gameLoaded) hideLoadingScreen();
+                    else document.querySelector('.loading-text').textContent = 'ゲームを開始しています...';
                 }
             });
         }
 
-        // ローディング画面を非表示
         function hideLoadingScreen() {
             const loadingScreen = document.getElementById('loading-screen');
             const instructions = document.getElementById('game-instructions');
-            
             loadingScreen.classList.add('hidden');
             instructions.classList.add('visible');
-            
-            setTimeout(() => {
-                loadingScreen.style.display = 'none';
-            }, 500);
-            
-            // 10秒後に操作説明を非表示
-            setTimeout(() => {
-                instructions.classList.remove('visible');
-            }, 10000);
+            setTimeout(() => loadingScreen.style.display = 'none', 500);
+            setTimeout(() => instructions.classList.remove('visible'), 10000);
         }
 
-        // 操作説明の表示/非表示
         function toggleInstructions() {
             const instructions = document.getElementById('game-instructions');
-            
             if (instructions.classList.contains('visible')) {
                 instructions.classList.remove('visible');
             } else {
                 instructions.classList.add('visible');
-                
-                // 5秒後に自動で非表示
-                setTimeout(() => {
-                    instructions.classList.remove('visible');
-                }, 5000);
+                setTimeout(() => instructions.classList.remove('visible'), 5000);
             }
         }
 
-        // メッセージ表示関数
         function showMessage(text, type = 'info', duration = 3000) {
-            let messageElement;
-            
-            if (type === 'error') {
-                messageElement = document.getElementById('error-message');
-            } else if (type === 'success') {
-                messageElement = document.getElementById('success-message');
-            }
-            
+            let messageElement = type === 'error' ? document.getElementById('error-message') : document.getElementById('success-message');
             if (messageElement) {
                 messageElement.textContent = text;
                 messageElement.style.display = 'block';
-                
-                setTimeout(() => {
-                    messageElement.style.display = 'none';
-                }, duration);
+                setTimeout(() => messageElement.style.display = 'none', duration);
             }
         }
 
-        // ゲームスクリプト読み込み後に実行される関数
         function onGameLoaded() {
             gameLoaded = true;
             updateConnectionStatus('connected');
-            
-            if (userInteracted) {
-                hideLoadingScreen();
-            } else {
-                document.querySelector('.loading-text').textContent = 'クリックしてゲームを開始';
-            }
+            if (userInteracted) hideLoadingScreen();
+            else document.querySelector('.loading-text').textContent = 'クリックしてゲームを開始';
         }
 
-        // WebSocket接続エラーハンドリング
-        function onConnectionError() {
-            updateConnectionStatus('disconnected');
-            showMessage('サーバーへの接続に失敗しました。ページを再読み込みしてください。', 'error', 5000);
-        }
-
-        // ゲーム統計の表示（デバッグ用）
-        function showGameStats() {
-            if (window.gameState) {
-                console.log('=== ゲーム統計 ===');
-                console.log(`プレイヤーID: ${window.myId}`);
-                console.log(`スコア: ${window.gameState.score}`);
-                console.log(`赤いアイテム収集数: ${window.gameState.redItemsCollected}`);
-                console.log(`ゲーム時間: ${Math.floor((Date.now() - window.gameState.gameStartTime) / 1000)}秒`);
-                console.log(`現在の役割: ${window.myId === window.oniId ? '鬼' : '逃走者'}`);
-            }
-        }
-
-        // 初期化
         waitForUserInteraction();
         updatePerformance();
         updateConnectionStatus('connecting');
 
-        // ゲームスクリプトの動的読み込み
         window.addEventListener('load', () => {
             setTimeout(() => {
                 const script = document.createElement('script');
@@ -551,127 +375,21 @@
                     updateConnectionStatus('disconnected');
                 };
                 document.body.appendChild(script);
-            }, 1000); // 1秒のローディング演出
+            }, 1000);
         });
 
-        // イベントリスナー
-        
-        // ヘルプボタン
         document.getElementById('help-button').addEventListener('click', toggleInstructions);
-
-        // キーボードショートカット
-        document.addEventListener('keydown', (event) => {
-            // F1キーで操作説明を表示
-            if (event.key === 'F1') {
-                event.preventDefault();
-                toggleInstructions();
-            }
-            
-            // Escapeキーでゲーム一時停止
-            if (event.key === 'Escape') {
-                if (document.pointerLockElement) {
-                    document.exitPointerLock();
-                }
-            }
-
-            // デバッグ用ショートカット（開発時のみ）
-            if (event.key === 'F12' && event.ctrlKey) {
-                event.preventDefault();
-                showGameStats();
-            }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F1') { e.preventDefault(); toggleInstructions(); }
+            if (e.key === 'Escape' && document.pointerLockElement) document.exitPointerLock();
         });
 
-        // ページの離脱前に警告
-        window.addEventListener('beforeunload', (event) => {
+        window.addEventListener('beforeunload', (e) => {
             if (gameLoaded && userInteracted && connectionStatus === 'connected') {
-                event.preventDefault();
-                event.returnValue = 'ゲームを終了しますか？';
+                e.preventDefault();
+                e.returnValue = 'ゲームを終了しますか？';
             }
         });
-
-        // ウィンドウフォーカス管理
-        let isWindowFocused = true;
-
-        window.addEventListener('focus', () => {
-            isWindowFocused = true;
-            if (gameLoaded && connectionStatus === 'disconnected') {
-                location.reload(); // 切断された場合は自動リロード
-            }
-        });
-
-        window.addEventListener('blur', () => {
-            isWindowFocused = false;
-        });
-
-        // ネットワーク状態の監視
-        window.addEventListener('online', () => {
-            if (gameLoaded && connectionStatus === 'disconnected') {
-                showMessage('ネットワークが復旧しました。ページを再読み込みします...', 'success', 2000);
-                setTimeout(() => location.reload(), 2000);
-            }
-        });
-
-        window.addEventListener('offline', () => {
-            updateConnectionStatus('disconnected');
-            showMessage('ネットワーク接続が切断されました。', 'error', 5000);
-        });
-
-        // タッチデバイスの検出
-        function isTouchDevice() {
-            return (('ontouchstart' in window) ||
-                   (navigator.maxTouchPoints > 0) ||
-                   (navigator.msMaxTouchPoints > 0));
-        }
-
-        // タッチデバイスの場合の初期化
-        if (isTouchDevice()) {
-            document.body.classList.add('touch-device');
-            
-            // タブレットモードを自動的に有効化するかの確認
-            setTimeout(() => {
-                if (gameLoaded && userInteracted) {
-                    const shouldEnableTabletMode = confirm('タッチデバイスを検出しました。タブレットモードを有効にしますか？');
-                    if (shouldEnableTabletMode && window.enableTabletMode) {
-                        window.enableTabletMode();
-                    }
-                }
-            }, 3000);
-        }
-
-        // エラー処理の改善
-        window.addEventListener('error', (event) => {
-            console.error('ゲームエラー:', event.error);
-            updateConnectionStatus('disconnected');
-            showMessage('ゲームでエラーが発生しました。ページを再読み込みしてください。', 'error', 10000);
-        });
-
-        // 未処理のPromise拒否をキャッチ
-        window.addEventListener('unhandledrejection', (event) => {
-            console.error('未処理のPromise拒否:', event.reason);
-        });
-
-        // ゲーム品質設定（将来的な拡張用）
-        const gameSettings = {
-            graphics: 'medium', // low, medium, high
-            shadows: true,
-            antialiasing: true,
-            maxFPS: 60
-        };
-
-        // ローカルストレージから設定を読み込み
-        try {
-            const savedSettings = localStorage.getItem('gameSettings');
-            if (savedSettings) {
-                Object.assign(gameSettings, JSON.parse(savedSettings));
-            }
-        } catch (e) {
-            console.warn('設定の読み込みに失敗しました:', e);
-        }
-
-        // 設定をエクスポート（ゲームスクリプトから使用可能）
-        window.gameSettings = gameSettings;
     </script>
-
-    <!-- メインゲームスクリプトは動的に読み込まれます -->
 </body>
 </html>

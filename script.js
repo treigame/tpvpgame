@@ -30,8 +30,6 @@ let gameState = {
 };
 
 let isTabletMode = false;
-let joystickActive = false;
-let joystickPosition = { x: 0, y: 0 };
 
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました');
@@ -52,7 +50,7 @@ ws.onmessage = (event) => {
         createSettingsUI();
         
         if (!gameStarted && waitingForPlayers) {
-            controls.getObject().position.set(0, 15, 0);
+            controls.getObject().position.set(0, 1.7, 0);
             isSpawned = false;
             showMessage('他のプレイヤーを待っています...', 'info', 3000);
         } else if (gameStarted) {
@@ -67,9 +65,7 @@ ws.onmessage = (event) => {
         }
         
         for (const id in data.players) {
-            if (id !== myId) {
-                createPlayerMesh(id, data.players[id]);
-            }
+            if (id !== myId) createPlayerMesh(id, data.players[id]);
         }
         
         for (const id in data.redItems || {}) {
@@ -80,13 +76,18 @@ ws.onmessage = (event) => {
     } else if (data.type === 'waiting_for_players') {
         waitingForPlayers = true;
         gameStarted = false;
-        controls.getObject().position.set(0, 15, 0);
+        controls.getObject().position.set(0, 1.7, 0);
         isSpawned = false;
         showMessage(`プレイヤー待機中 (${data.currentPlayers}/3)`, 'info', 2000);
     } else if (data.type === 'game_countdown') {
         gameCountdown = data.countdown;
         if (data.countdown > 0) {
             showMessage(`ゲーム開始まで ${data.countdown}秒`, 'info', 1000);
+            if (controls.getObject().position.y > 10) {
+                controls.getObject().position.y = 1.7;
+                velocity.set(0, 0, 0);
+                canJump = true;
+            }
         } else {
             showMessage('START!', 'success', 1500);
             startGame();
@@ -229,16 +230,40 @@ directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
 
-const textureLoader = new THREE.TextureLoader();
 const planeGeometry = new THREE.PlaneGeometry(200, 200);
-const woodTexture = textureLoader.load(
-    'https://images.unsplash.com/photo-1587840490238-ab2f0e5b6fdd?w=512',
-    (texture) => {
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(20, 20);
-    }
-);
+const canvas = document.createElement('canvas');
+canvas.width = 512;
+canvas.height = 512;
+const ctx = canvas.getContext('2d');
+
+const baseColor = '#8B7355';
+ctx.fillStyle = baseColor;
+ctx.fillRect(0, 0, 512, 512);
+
+for (let i = 0; i < 50; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const width = 2 + Math.random() * 8;
+    const height = 20 + Math.random() * 100;
+    const opacity = 0.1 + Math.random() * 0.2;
+    ctx.fillStyle = `rgba(101, 67, 33, ${opacity})`;
+    ctx.fillRect(x, y, width, height);
+}
+
+for (let i = 0; i < 20; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const radius = 5 + Math.random() * 15;
+    ctx.fillStyle = `rgba(80, 50, 20, ${0.2 + Math.random() * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+const woodTexture = new THREE.CanvasTexture(canvas);
+woodTexture.wrapS = THREE.RepeatWrapping;
+woodTexture.wrapT = THREE.RepeatWrapping;
+woodTexture.repeat.set(20, 20);
 
 const planeMaterial = new THREE.MeshStandardMaterial({ 
     map: woodTexture,
@@ -338,14 +363,10 @@ function createInfinityFortressBuildings() {
     buildings.forEach((building) => {
         const geometry = new THREE.BoxGeometry(...building.size);
         const mesh = new THREE.Mesh(geometry, building.material);
-        
         mesh.position.set(...building.pos);
-        if (building.rotation) {
-            mesh.rotation.set(...building.rotation);
-        }
+        if (building.rotation) mesh.rotation.set(...building.rotation);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        
         scene.add(mesh);
         blocks.push(mesh);
         
@@ -360,7 +381,6 @@ function createInfinityFortressBuildings() {
 }
 
 createInfinityFortressBuildings();
-
 function createUI() {
     const uiContainer = document.createElement('div');
     uiContainer.id = 'game-ui';
@@ -719,7 +739,12 @@ function createSettingsUI() {
     settingsMenu.innerHTML = `
         <div style="font-size: 16px; font-weight: bold; margin-bottom: 15px;">設定</div>
         <div id="tablet-toggle" style="background: rgba(255, 255, 255, 0.1); padding: 10px; border-radius: 5px; cursor: pointer; border: 1px solid #ccc; text-align: center; margin-bottom: 10px;">📱 Tablet Mode</div>
-        <div><input type="text" id="code-input" placeholder="Code入力" style="width: 100%; padding: 8px; border-radius: 4px; margin-bottom: 5px;">
+        <div style="margin-bottom: 10px;">
+            <a href="https://lin.ee/Pn7XBpd" target="_blank" style="display: block; text-align: center;">
+                <img src="https://scdn.line-apps.com/n/line_add_friends/btn/en.png" alt="Add friend" height="36" border="0" style="border-radius: 4px;">
+            </a>
+        </div>
+        <div><input type="text" id="code-input" placeholder="Code" style="width: 100%; padding: 8px; border-radius: 4px; margin-bottom: 5px;">
         <button id="code-submit" style="width: 100%; padding: 8px; border-radius: 4px; border: none; background: #007bff; color: white; cursor: pointer;">確認</button></div>
     `;
     
@@ -966,10 +991,6 @@ function showMessage(text, type = 'info', duration = 3000) {
         container.id = 'message-container';
         container.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3000; max-width: 400px; pointer-events: none;';
         document.body.appendChild(container);
-        
-        const style = document.createElement('style');
-        style.textContent = '@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.1); } }';
-        document.head.appendChild(style);
     }
     
     const msg = document.createElement('div');
@@ -1016,8 +1037,12 @@ function animate() {
         handleFlightMovement();
     } else if (!gameStarted || !isSpawned) {
         if (waitingForPlayers) {
-            controls.getObject().position.y = 15;
+            if (controls.getObject().position.y !== 1.7) {
+                controls.getObject().position.y = 1.7;
+            }
             velocity.set(0, 0, 0);
+            canJump = true;
+            handleNormalMovement();
         }
     } else {
         handleNormalMovement();
@@ -1082,7 +1107,7 @@ function handleFlightMovement() {
         currentPos.add(strafeVector);
     }
     
-    controls.getObject().position.x = currentPos.x;
+  controls.getObject().position.x = currentPos.x;
     controls.getObject().position.z = currentPos.z;
     velocity.y *= 0.9;
     controls.getObject().position.y += velocity.y * (1/60);
