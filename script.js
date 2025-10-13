@@ -1,12 +1,4 @@
-attackButton.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (myId === oniId && gameStarted) {
-            playSwordSwing();
-            checkSwordHit();
-        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
-            throwSnowball();
-        }
-    });import * as THREE from 'three';
+import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -988,48 +980,12 @@ document.addEventListener('click', () => {
 document.addEventListener('mousedown', (e) => {
     if (document.pointerLockElement && e.button === 0) {
         if (myId === oniId && gameStarted) {
-            playSwordSwing();
             checkSwordHit();
         } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
     }
 });
-
-function playSwordSwing() {
-    if (!camera.sword) return;
-    
-    const sword = camera.sword;
-    const originalRotation = { x: sword.rotation.x, y: sword.rotation.y, z: sword.rotation.z };
-    const originalPosition = { x: sword.position.x, y: sword.position.y, z: sword.position.z };
-    
-    const swingDuration = 300;
-    const startTime = Date.now();
-    
-    function animateSwing() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / swingDuration, 1);
-        
-        if (progress < 0.5) {
-            const swingProgress = progress * 2;
-            sword.rotation.x = originalRotation.x - Math.PI / 3 * swingProgress;
-            sword.position.z = originalPosition.z - 0.3 * swingProgress;
-        } else {
-            const swingProgress = (progress - 0.5) * 2;
-            sword.rotation.x = originalRotation.x - Math.PI / 3 + Math.PI / 3 * swingProgress;
-            sword.position.z = originalPosition.z - 0.3 + 0.3 * swingProgress;
-        }
-        
-        if (progress < 1) {
-            requestAnimationFrame(animateSwing);
-        } else {
-            sword.rotation.set(originalRotation.x, originalRotation.y, originalRotation.z);
-            sword.position.set(originalPosition.x, originalPosition.y, originalPosition.z);
-        }
-    }
-    
-    animateSwing();
-}
 
 function checkSwordHit() {
     if (myId !== oniId) return;
@@ -1071,7 +1027,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1079,7 +1035,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1110,7 +1066,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1118,7 +1074,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1319,7 +1275,7 @@ function handleFlightMovement() {
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 36.0;
+    const speed = 20.0;
     const deltaTime = 1/60;
     const currentPos = controls.getObject().position.clone();
     
@@ -1356,7 +1312,7 @@ function handleNormalMovement() {
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 27.0;
+    const speed = 15.0;
     const deltaTime = 1/60;
     
     const forward = new THREE.Vector3();
