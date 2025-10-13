@@ -75,6 +75,12 @@ ws.onmessage = (event) => {
         }
         
         updateUI();
+    } else if (data.type === 'force_position') {
+        // サーバーから強制位置設定を受信
+        console.log(`強制位置設定: (${data.x.toFixed(1)}, ${data.y}, ${data.z.toFixed(1)})`);
+        controls.getObject().position.set(data.x, data.y, data.z);
+        velocity.set(0, 0, 0);
+        canJump = true;
     } else if (data.type === 'waiting_for_players') {
         waitingForPlayers = true;
         gameStarted = false;
@@ -85,7 +91,8 @@ ws.onmessage = (event) => {
         gameCountdown = data.countdown;
         if (data.countdown > 0) {
             showMessage(`ゲーム開始まで ${data.countdown}秒`, 'info', 1000);
-            if (controls.getObject().position.y > 10) {
+            // カウントダウン中は地上に固定
+            if (controls.getObject().position.y !== 1.7) {
                 controls.getObject().position.y = 1.7;
                 velocity.set(0, 0, 0);
                 canJump = true;
@@ -207,7 +214,7 @@ function startGame() {
     gameCountdown = -1;
     waitingForPlayers = false;
     isSpawned = true;
-    controls.getObject().position.set(0, 1.7, 0);
+    controls.getObject().position.y = 1.7;
     velocity.set(0, 0, 0);
     canJump = true;
     showMessage('ゲーム開始！', 'success', 2000);
@@ -401,6 +408,7 @@ function createUI() {
         border-radius: 10px;
         border: 2px solid #00ff00;
         min-width: 200px;
+        transition: transform 0.3s ease;
     `;
     
     uiContainer.innerHTML = `
@@ -770,13 +778,22 @@ function createSettingsUI() {
     document.getElementById('tablet-toggle').addEventListener('click', () => {
         isTabletMode = !isTabletMode;
         const toggle = document.getElementById('tablet-toggle');
+        const gameUI = document.getElementById('game-ui');
+        
         if (isTabletMode) {
             toggle.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
             toggle.innerHTML = '📱 Tablet Mode (ON)';
+            if (gameUI) {
+                gameUI.style.transform = 'scale(0.7)';
+                gameUI.style.transformOrigin = 'top left';
+            }
             createTouchControls();
         } else {
             toggle.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
             toggle.innerHTML = '📱 Tablet Mode';
+            if (gameUI) {
+                gameUI.style.transform = 'scale(1)';
+            }
             removeTouchControls();
         }
         document.getElementById('settings-menu').style.display = 'none';
@@ -1319,7 +1336,7 @@ function handleNormalMovement() {
         controls.getObject().position.z = newPos.z;
     }
     
-    velocity.y -= 50.0;
+    velocity.y -= 50.0 * deltaTime;
     
     if (controls.getObject().position.y <= 1.7) {
         velocity.y = 0;

@@ -225,14 +225,32 @@ function startGameCountdown() {
     waitingForPlayers = false;
     let countdown = 5;
     
-    console.log('ゲーム開始カウントダウン開始！');
+    console.log('ゲーム開始カウントダウン開始！全プレイヤーを地上に配置します');
     
     for (const playerId in players) {
         const safePos = generateSafePosition();
         players[playerId].x = safePos.x;
         players[playerId].y = 1.7;
         players[playerId].z = safePos.z;
-        console.log(`プレイヤー ${playerId} を地上に配置: (${players[playerId].x.toFixed(1)}, 1.7, ${players[playerId].z.toFixed(1)})`);
+        
+        sendToPlayer(playerId, {
+            type: 'force_position',
+            x: safePos.x,
+            y: 1.7,
+            z: safePos.z
+        });
+        
+        console.log(`プレイヤー ${playerId} を配置: (${safePos.x.toFixed(1)}, 1.7, ${safePos.z.toFixed(1)})`);
+    }
+    
+    for (const playerId in players) {
+        broadcast({
+            type: 'player_update',
+            id: playerId,
+            x: players[playerId].x,
+            y: players[playerId].y,
+            z: players[playerId].z
+        });
     }
     
     broadcast({
@@ -425,7 +443,7 @@ wss.on('connection', (ws, req) => {
     };
     
     ws.playerId = id;
-    console.log(`新しいプレイヤーが接続しました: ${id} (IP: ${clientIP}) at (${spawnPos.x.toFixed(1)}, ${spawnPos.y}, ${spawnPos.z.toFixed(1)})`);
+    console.log(`新しいプレイヤーが接続: ${id} (IP: ${clientIP}) at (${spawnPos.x.toFixed(1)}, ${spawnPos.y}, ${spawnPos.z.toFixed(1)})`);
     
     if (gameStarted && (!oniId || Object.keys(players).length === 1)) {
         oniId = id;
@@ -457,6 +475,13 @@ wss.on('connection', (ws, req) => {
                     };
                     
                     ws.send(JSON.stringify(initData));
+                    
+                    ws.send(JSON.stringify({
+                        type: 'force_position',
+                        x: players[id].x,
+                        y: players[id].y,
+                        z: players[id].z
+                    }));
                     
                     broadcast({ 
                         type: 'player_update', 
