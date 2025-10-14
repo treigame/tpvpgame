@@ -909,7 +909,24 @@ function createTouchControls() {
     // タッチ視点操作用
     let lastTouchX = 0;
     let lastTouchY = 0;
-    let isLookTouchActive = false;
+    let touchLookId = null;
+    
+    // タッチ可能エリアの判定
+    function isTouchOnButton(touch) {
+        const x = touch.clientX;
+        const y = touch.clientY;
+        
+        // ジョイスティックエリア
+        if (x < 220 && y > window.innerHeight - 220) return true;
+        
+        // ジャンプボタンエリア
+        if (x > window.innerWidth - 150 && y > window.innerHeight - 150) return true;
+        
+        // 攻撃ボタンエリア
+        if (x > window.innerWidth - 150 && y > window.innerHeight - 250 && y < window.innerHeight - 100) return true;
+        
+        return false;
+    }
     
     joystickLeft.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -977,55 +994,62 @@ function createTouchControls() {
     
     // 画面全体での視点操作
     document.addEventListener('touchstart', (e) => {
-        // ボタンやジョイスティックをタッチしている場合は視点操作しない
-        const target = e.target;
-        if (target.id === 'joystick-left' || 
-            target.id === 'jump-button' || 
-            target.id === 'attack-button' ||
-            target.parentElement?.id === 'joystick-left') {
-            return;
-        }
-        
-        isLookTouchActive = true;
-        lastTouchX = e.touches[0].clientX;
-        lastTouchY = e.touches[0].clientY;
-    });
-    
-    document.addEventListener('touchmove', (e) => {
-        if (!isLookTouchActive) return;
-        
-        // ボタンやジョイスティックをタッチしている場合は視点操作しない
-        const target = e.target;
-        if (target.id === 'joystick-left' || 
-            target.id === 'jump-button' || 
-            target.id === 'attack-button' ||
-            target.parentElement?.id === 'joystick-left') {
-            return;
-        }
-        
         const touch = e.touches[0];
-        const deltaX = touch.clientX - lastTouchX;
-        const deltaY = touch.clientY - lastTouchY;
         
-        // カメラの回転を更新
-        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-        euler.setFromQuaternion(camera.quaternion);
+        // ボタンやジョイスティックをタッチしている場合は視点操作しない
+        if (isTouchOnButton(touch)) {
+            return;
+        }
         
-        euler.y -= deltaX * 0.002;
-        euler.x -= deltaY * 0.002;
-        
-        // 上下の視点制限
-        euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
-        
-        camera.quaternion.setFromEuler(euler);
-        
+        touchLookId = e.touches[0].identifier;
         lastTouchX = touch.clientX;
         lastTouchY = touch.clientY;
-    });
+    }, { passive: false });
+    
+    document.addEventListener('touchmove', (e) => {
+        if (touchLookId === null) return;
+        
+        let lookTouch = null;
+        for (let i = 0; i < e.touches.length; i++) {
+            if (e.touches[i].identifier === touchLookId) {
+                lookTouch = e.touches[i];
+                break;
+            }
+        }
+        
+        if (!lookTouch) return;
+        
+        // ボタンやジョイスティックをタッチしている場合は視点操作しない
+        if (isTouchOnButton(lookTouch)) {
+            return;
+        }
+        
+        const deltaX = lookTouch.clientX - lastTouchX;
+        const deltaY = lookTouch.clientY - lastTouchY;
+        
+        // PointerLockControlsのカメラ回転を直接操作
+        const euler = controls.getObject().rotation;
+        euler.y -= deltaX * 0.002;
+        
+        // カメラ自体のX回転
+        const cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        cameraEuler.setFromQuaternion(camera.quaternion);
+        cameraEuler.x -= deltaY * 0.002;
+        cameraEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraEuler.x));
+        camera.quaternion.setFromEuler(cameraEuler);
+        
+        lastTouchX = lookTouch.clientX;
+        lastTouchY = lookTouch.clientY;
+    }, { passive: false });
     
     document.addEventListener('touchend', (e) => {
-        isLookTouchActive = false;
-    });
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === touchLookId) {
+                touchLookId = null;
+                break;
+            }
+        }
+    }, { passive: false });
 }
 
 function removeTouchControls() {
