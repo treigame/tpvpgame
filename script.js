@@ -1121,7 +1121,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1129,7 +1129,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1137,12 +1137,13 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'Space':
             event.preventDefault();
+            if (canJump) {
+                velocity.y += 18;
+                canJump = false;
+            }
             if (flightEnabled && playerRank === 'OWNER') {
                 isFlying = !isFlying;
                 showMessage(isFlying ? 'フライト有効' : 'フライト無効', 'success', 2000);
-            } else if (canJump) {
-                velocity.y += 18;
-                canJump = false;
             }
             break;
         case 'ShiftLeft':
@@ -1155,7 +1156,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1163,7 +1164,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
