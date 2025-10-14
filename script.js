@@ -1106,7 +1106,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1114,7 +1114,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1122,8 +1122,9 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'Space':
             event.preventDefault();
-            if (flightEnabled && isFlying) {
-                velocity.y += 15;
+            if (flightEnabled && playerRank === 'OWNER') {
+                isFlying = !isFlying;
+                showMessage(isFlying ? 'フライト有効' : 'フライト無効', 'success', 2000);
             } else if (canJump) {
                 velocity.y += 18;
                 canJump = false;
@@ -1132,12 +1133,6 @@ document.addEventListener('keydown', (event) => {
         case 'ShiftLeft':
             if (flightEnabled && isFlying) velocity.y -= 15;
             break;
-        case 'KeyF':
-            if (flightEnabled && playerRank === 'OWNER') {
-                isFlying = !isFlying;
-                showMessage(isFlying ? 'フライト有効' : 'フライト無効', 'success', 2000);
-            }
-            break;
     }
 });
 
@@ -1145,7 +1140,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1153,7 +1148,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':

@@ -19,7 +19,9 @@ let snowballCounter = 0;
 let gameStarted = false;
 let waitingForPlayers = false;
 let countdownInterval = null;
+let gameTimerInterval = null;
 const MIN_PLAYERS = 3;
+const GAME_TIME_LIMIT = 240;
 
 let gameStats = {
     totalGames: 0,
@@ -289,6 +291,37 @@ function startGame() {
     
     console.log(`ゲーム開始！プレイヤー数: ${Object.keys(players).length}, 鬼: ${oniId}`);
     gameStats.totalGames++;
+    
+    if (gameTimerInterval) {
+        clearInterval(gameTimerInterval);
+    }
+    
+    const gameStartTime = Date.now();
+    gameTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
+        const remaining = GAME_TIME_LIMIT - elapsed;
+        
+        if (remaining <= 0) {
+            clearInterval(gameTimerInterval);
+            gameTimerInterval = null;
+            endGame('players');
+        }
+    }, 1000);
+}
+
+function endGame(winner) {
+    gameStarted = false;
+    
+    broadcast({
+        type: 'game_over',
+        winner: winner
+    });
+    
+    console.log(`ゲーム終了: ${winner === 'players' ? 'プレイヤーの勝利' : '鬼の勝利'}`);
+    
+    setTimeout(() => {
+        resetGame();
+    }, 10000);
 }
 
 function selectRandomOni() {
@@ -317,6 +350,11 @@ function resetGame() {
     if (countdownInterval) {
         clearInterval(countdownInterval);
         countdownInterval = null;
+    }
+    
+    if (gameTimerInterval) {
+        clearInterval(gameTimerInterval);
+        gameTimerInterval = null;
     }
     
     for (const playerId in players) {
@@ -377,7 +415,7 @@ function checkSnowballHit(snowballId, snowball) {
             gameStats.totalGames++;
             
             setTimeout(() => {
-                resetGame();
+                endGame('players');
             }, 3000);
             
             return true;
@@ -738,6 +776,7 @@ function gracefulShutdown() {
     console.log('サーバーをシャットダウンしています...');
     
     if (countdownInterval) clearInterval(countdownInterval);
+    if (gameTimerInterval) clearInterval(gameTimerInterval);
     clearInterval(proximityCheckInterval);
     clearInterval(healthCheckInterval);
     
@@ -762,5 +801,6 @@ server.listen(port, () => {
     console.log(`📍 ポート: ${port}`);
     console.log(`🌐 URL: http://localhost:${port}`);
     console.log(`👥 最小プレイヤー数: ${MIN_PLAYERS}人`);
+    console.log(`⏱️  制限時間: ${GAME_TIME_LIMIT}秒（4分）`);
     console.log(`=================================`);
 });
