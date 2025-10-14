@@ -20,6 +20,8 @@ let playerRank = null;
 let isFlying = false;
 let flightEnabled = false;
 let isSwordSwinging = false;
+let isStunned = false;
+let stunEndTime = 0;
 
 let gameState = {
     score: 0,
@@ -970,8 +972,8 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveForward = deltaY < -10;
-        moveBackward = deltaY > 10;
+        moveBackward = deltaY < -10;
+        moveForward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1399,8 +1401,8 @@ function animate() {
 
 function handleFlightMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z -= 1;
-    if (moveBackward) inputDir.z += 1;
+    if (moveForward) inputDir.z += 1;
+    if (moveBackward) inputDir.z -= 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
@@ -1436,8 +1438,8 @@ function handleFlightMovement() {
 
 function handleNormalMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z -= 1;
-    if (moveBackward) inputDir.z += 1;
+    if (moveForward) inputDir.z += 1;
+    if (moveBackward) inputDir.z -= 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();

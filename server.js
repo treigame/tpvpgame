@@ -696,6 +696,44 @@ wss.on('connection', (ws, req) => {
                     }
                     break;
                     
+                case 'auto_tag':
+                    if (!gameStarted) return;
+                    
+                    if (data.oniId === oniId && data.oniId === id && players[data.taggedId]) {
+                        const oniPos = players[oniId];
+                        const targetPos = players[data.taggedId];
+                        const distance = Math.sqrt(
+                            Math.pow(oniPos.x - targetPos.x, 2) + 
+                            Math.pow(oniPos.z - targetPos.z, 2)
+                        );
+                        
+                        console.log(`🎯 自動タッチ判定: 鬼 ${oniId} → プレイヤー ${data.taggedId}。距離: ${distance.toFixed(2)}`);
+                        
+                        if (distance <= 3.0) {
+                            const oldOni = oniId;
+                            
+                            if (players[oldOni]) {
+                                players[oldOni].totalOniTime += Date.now() - (players[oldOni].oniStartTime || Date.now());
+                                players[oldOni].score += 100;
+                            }
+                            
+                            oniId = data.taggedId;
+                            players[oniId].oniStartTime = Date.now();
+                            gameStats.totalOniChanges++;
+                            
+                            console.log(`✅ 鬼が自動変更されました: ${oldOni} → ${oniId}`);
+                            
+                            broadcast({ 
+                                type: 'oni_changed', 
+                                oniId: oniId,
+                                taggedPlayerId: data.taggedId
+                            });
+                        } else {
+                            console.log(`❌ 自動タッチ失敗: 距離が遠すぎます (${distance.toFixed(2)} > 3.0)`);
+                        }
+                    }
+                    break;
+                    
                 case 'tag_player':
                     if (!gameStarted) return;
                     
@@ -706,6 +744,8 @@ wss.on('connection', (ws, req) => {
                             Math.pow(oniPos.x - targetPos.x, 2) + 
                             Math.pow(oniPos.z - targetPos.z, 2)
                         );
+                        
+                        console.log(`鬼 ${oniId} がプレイヤー ${data.taggedId} をタッチ。距離: ${distance.toFixed(2)}`);
                         
                         if (distance <= 5.0) {
                             const oldOni = oniId;
@@ -719,8 +759,12 @@ wss.on('connection', (ws, req) => {
                             players[oniId].oniStartTime = Date.now();
                             gameStats.totalOniChanges++;
                             
+                            console.log(`✅ 鬼が変更されました: ${oldOni} → ${oniId}`);
+                            
                             const changeMessage = { type: 'oni_changed', oniId: oniId };
                             broadcast(changeMessage);
+                        } else {
+                            console.log(`❌ タッチ失敗: 距離が遠すぎます (${distance.toFixed(2)} > 5.0)`);
                         }
                     }
                     break;
