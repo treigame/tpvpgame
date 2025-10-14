@@ -176,6 +176,13 @@ ws.onmessage = (event) => {
         const oldOni = oniId;
         oniId = data.oniId;
         
+        if (data.taggedPlayerId === myId) {
+            isStunned = true;
+            stunEndTime = Date.now() + 5000;
+            showMessage('5秒間スタン！', 'error', 5000);
+            velocity.set(0, 0, 0);
+        }
+        
         if (oldOni === myId && gameState.oniStartTime) {
             gameState.timeAsOni += Date.now() - gameState.oniStartTime;
             gameState.oniStartTime = null;
@@ -1074,22 +1081,20 @@ document.addEventListener('click', () => {
 
 document.addEventListener('mousedown', (e) => {
     if (document.pointerLockElement && e.button === 0) {
-        if (myId === oniId && gameStarted) {
-            swingSword();
-            checkSwordHit();
-        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
+        if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
     }
 });
 
-function checkSwordHit() {
-    if (myId !== oniId) return;
+function checkAutoTag() {
+    if (myId !== oniId || !gameStarted || isStunned) return;
+    
     for (const id in players) {
         if (id === myId) continue;
         const distance = controls.getObject().position.distanceTo(players[id].position);
-        if (distance < 4.0) {
-            ws.send(JSON.stringify({ type: 'tag_player', id: myId, taggedId: id }));
+        if (distance < 3.0) {
+            ws.send(JSON.stringify({ type: 'auto_tag', oniId: myId, taggedId: id }));
             break;
         }
     }
@@ -1120,10 +1125,12 @@ function throwSnowball() {
 
 document.addEventListener('keydown', (event) => {
     if (event.repeat) return;
+    if (isStunned) return;
+    
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1131,7 +1138,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1139,17 +1146,25 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'Space':
             event.preventDefault();
-            if (canJump) {
+            if (flightEnabled && playerRank === 'OWNER') {
+                if (!isFlying) {
+                    isFlying = true;
+                    showMessage('フライト有効', 'success', 2000);
+                } else {
+                    velocity.y += 25;
+                }
+            } else if (canJump) {
                 velocity.y += 18;
                 canJump = false;
             }
-            if (flightEnabled && playerRank === 'OWNER') {
-                isFlying = !isFlying;
-                showMessage(isFlying ? 'フライト有効' : 'フライト無効', 'success', 2000);
-            }
             break;
         case 'ShiftLeft':
-            if (flightEnabled && isFlying) velocity.y -= 15;
+            if (flightEnabled && isFlying) {
+                velocity.y -= 25;
+            } else if (flightEnabled && playerRank === 'OWNER') {
+                isFlying = false;
+                showMessage('フライト無効', 'success', 2000);
+            }
             break;
     }
 });
@@ -1158,7 +1173,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1166,7 +1181,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1358,6 +1373,20 @@ function animate() {
         return;
     }
     
+    if (isStunned) {
+        if (Date.now() >= stunEndTime) {
+            isStunned = false;
+            showMessage('スタン解除！', 'success', 2000);
+        } else {
+            moveForward = false;
+            moveBackward = false;
+            moveLeft = false;
+            moveRight = false;
+            velocity.x = 0;
+            velocity.z = 0;
+        }
+    }
+    
     if (isFlying && flightEnabled) {
         handleFlightMovement();
     } else if (waitingForPlayers || !gameStarted) {
@@ -1369,6 +1398,7 @@ function animate() {
         handleNormalMovement();
     } else if (gameStarted && isSpawned) {
         handleNormalMovement();
+        checkAutoTag();
         
         const mapLimit = 98;
         const pos = controls.getObject().position;
@@ -1437,6 +1467,17 @@ function handleFlightMovement() {
 }
 
 function handleNormalMovement() {
+    if (isStunned) {
+        velocity.y -= 50.0 * (1/60);
+        if (controls.getObject().position.y <= 1.7) {
+            velocity.y = 0;
+            controls.getObject().position.y = 1.7;
+            canJump = true;
+        }
+        controls.getObject().position.y += velocity.y * (1/60);
+        return;
+    }
+    
     const inputDir = new THREE.Vector3();
     if (moveForward) inputDir.z += 1;
     if (moveBackward) inputDir.z -= 1;
