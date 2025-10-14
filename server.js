@@ -762,8 +762,5 @@ server.listen(port, () => {
     console.log(`📍 ポート: ${port}`);
     console.log(`🌐 URL: http://localhost:${port}`);
     console.log(`👥 最小プレイヤー数: ${MIN_PLAYERS}人`);
-    console.log(`⚡ 移動速度: 通常の3.6倍`);
-    console.log(`⚔️ 剣振りアニメーション: 有効`);
-    console.log(`📱 タブレットモード: 対応`);
     console.log(`=================================`);
 });

@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-// WebSocket接続
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${wsProtocol}//${window.location.host}`);
 
-// ゲーム状態
 let myId = null;
 let players = {};
 let redItems = {};
@@ -21,17 +19,24 @@ let isSpawned = false;
 let playerRank = null;
 let isFlying = false;
 let flightEnabled = false;
-let swordSwinging = false;
-let isTabletMode = false;
+let isSwordSwinging = false;
 
 let gameState = {
     score: 0,
     redItemsCollected: 0,
+    timeAsOni: 0,
+    timeAlive: 0,
+    gameStartTime: Date.now(),
+    oniStartTime: null,
     minimapCanvas: null,
     minimapCtx: null
 };
 
-// WebSocketイベントハンドラ
+let isTabletMode = false;
+let touchStartX = 0;
+let touchStartY = 0;
+let isTouchingUI = false;
+
 ws.onopen = () => {
     console.log('WebSocket接続が確立されました');
     isConnected = true;
@@ -61,6 +66,7 @@ ws.onmessage = (event) => {
         }
         
         if (myId === oniId && gameStarted) {
+            gameState.oniStartTime = Date.now();
             addSword(camera);
         }
         
@@ -160,6 +166,14 @@ ws.onmessage = (event) => {
         const oldOni = oniId;
         oniId = data.oniId;
         
+        if (oldOni === myId && gameState.oniStartTime) {
+            gameState.timeAsOni += Date.now() - gameState.oniStartTime;
+            gameState.oniStartTime = null;
+        }
+        if (oniId === myId) {
+            gameState.oniStartTime = Date.now();
+        }
+        
         if (oldOni === myId) {
             removeSword(camera);
         } else if (players[oldOni] && players[oldOni].sword) {
@@ -208,7 +222,6 @@ function startGame() {
     showMessage('ゲーム開始！', 'success', 2000);
 }
 
-// Three.js シーン設定
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x8B7355, 80, 200);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -218,7 +231,6 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// ライト
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
 scene.add(ambientLight);
 
@@ -229,10 +241,43 @@ directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
 
-// 地面
 const planeGeometry = new THREE.PlaneGeometry(200, 200);
+const canvas = document.createElement('canvas');
+canvas.width = 512;
+canvas.height = 512;
+const ctx = canvas.getContext('2d');
+
+const baseColor = '#8B7355';
+ctx.fillStyle = baseColor;
+ctx.fillRect(0, 0, 512, 512);
+
+for (let i = 0; i < 50; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const width = 2 + Math.random() * 8;
+    const height = 20 + Math.random() * 100;
+    const opacity = 0.1 + Math.random() * 0.2;
+    ctx.fillStyle = `rgba(101, 67, 33, ${opacity})`;
+    ctx.fillRect(x, y, width, height);
+}
+
+for (let i = 0; i < 20; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const radius = 5 + Math.random() * 15;
+    ctx.fillStyle = `rgba(80, 50, 20, ${0.2 + Math.random() * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+const woodTexture = new THREE.CanvasTexture(canvas);
+woodTexture.wrapS = THREE.RepeatWrapping;
+woodTexture.wrapT = THREE.RepeatWrapping;
+woodTexture.repeat.set(20, 20);
+
 const planeMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x8B7355,
+    map: woodTexture,
     roughness: 0.9,
     metalness: 0.0
 });
@@ -242,7 +287,6 @@ plane.position.y = -1;
 plane.receiveShadow = true;
 scene.add(plane);
 
-// 壁
 const WALL_SIZE = 200;
 const WALL_HEIGHT = 20;
 const WALL_THICKNESS = 4;
@@ -288,8 +332,7 @@ scene.add(wall4);
 walls.push(wall4);
 blocks.push(wall4);
 
-// 建物配置
-function createBuildings() {
+function createInfinityFortressBuildings() {
     const buildingMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x8B6F47,
         roughness: 0.7,
@@ -312,9 +355,20 @@ function createBuildings() {
         { pos: [30, 7, -25], size: [8, 14, 12], rotation: [0, 0.5, -0.1], material: buildingMaterial },
         { pos: [-20, 5, -30], size: [14, 10, 8], rotation: [0, -0.3, 0], material: buildingMaterial },
         { pos: [45, 4, 45], size: [10, 8, 10], material: buildingMaterial },
+        { pos: [45, 10, 45], size: [8, 6, 8], material: accentMaterial },
         { pos: [-45, 5, 45], size: [12, 10, 12], material: buildingMaterial },
+        { pos: [-45, 12, 45], size: [9, 5, 9], material: accentMaterial },
+        { pos: [15, 3, 50], size: [6, 6, 20], material: buildingMaterial },
+        { pos: [-15, 3, 50], size: [6, 6, 20], material: buildingMaterial },
+        { pos: [0, 3, 65], size: [40, 6, 6], material: buildingMaterial },
         { pos: [60, 6, 20], size: [10, 12, 15], rotation: [0, 0.2, 0], material: buildingMaterial },
         { pos: [-60, 5, -20], size: [15, 10, 10], rotation: [0, -0.3, 0], material: buildingMaterial },
+        { pos: [50, 4, -50], size: [12, 8, 12], material: buildingMaterial },
+        { pos: [-50, 7, 50], size: [10, 14, 10], material: buildingMaterial },
+        { pos: [70, 8, 0], size: [8, 16, 8], material: accentMaterial },
+        { pos: [-70, 8, 0], size: [8, 16, 8], material: accentMaterial },
+        { pos: [0, 8, 70], size: [8, 16, 8], material: accentMaterial },
+        { pos: [0, 8, -70], size: [8, 16, 8], material: accentMaterial }
     ];
 
     buildings.forEach((building) => {
@@ -326,12 +380,19 @@ function createBuildings() {
         mesh.receiveShadow = true;
         scene.add(mesh);
         blocks.push(mesh);
+        
+        if (Math.random() > 0.6) {
+            const accentGeom = new THREE.BoxGeometry(building.size[0] * 1.1, 0.5, building.size[2] * 1.1);
+            const accent = new THREE.Mesh(accentGeom, accentMaterial);
+            accent.position.set(building.pos[0], building.pos[1] + building.size[1]/2, building.pos[2]);
+            accent.castShadow = true;
+            scene.add(accent);
+        }
     });
 }
 
-createBuildings();
+createInfinityFortressBuildings();
 
-// UI作成
 function createUI() {
     const uiContainer = document.createElement('div');
     uiContainer.id = 'game-ui';
@@ -349,6 +410,7 @@ function createUI() {
         border-radius: 10px;
         border: 2px solid #00ff00;
         min-width: 200px;
+        transition: transform 0.3s ease;
     `;
     
     uiContainer.innerHTML = `
@@ -362,6 +424,15 @@ function createUI() {
             <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
                 雪玉投擲可能！
             </div>
+        </div>
+        <div id="timer-info" style="margin-top: 10px;">
+            <div>ゲーム時間: <span id="game-time">00:00</span></div>
+            <div id="oni-time" style="display: ${myId === oniId ? 'block' : 'none'}">
+                鬼時間: <span id="oni-duration">00:00</span></div>
+        </div>
+        <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
+            <div>WASD/矢印: 移動 | Space: ジャンプ | マウス: 視点</div>
+            <div>クリック: 雪玉/鬼交代</div>
         </div>
     `;
     
@@ -382,7 +453,6 @@ function createMinimap() {
         border: 2px solid #ffffff;
         border-radius: 10px;
         z-index: 1000;
-        pointer-events: none;
     `;
     
     const canvas = document.createElement('canvas');
@@ -474,12 +544,6 @@ function addSword(mesh) {
     swordGroup.rotation.x = Math.PI / 4;
     swordGroup.rotation.y = -Math.PI / 6;
     
-    swordGroup.userData.defaultRotation = {
-        x: Math.PI / 4,
-        y: -Math.PI / 6,
-        z: 0
-    };
-    
     mesh.add(swordGroup);
     mesh.sword = swordGroup;
 }
@@ -492,35 +556,36 @@ function removeSword(mesh) {
 }
 
 function swingSword() {
-    if (!camera.sword || swordSwinging) return;
+    if (!camera.sword || isSwordSwinging) return;
     
-    swordSwinging = true;
+    isSwordSwinging = true;
     const sword = camera.sword;
-    const defaultRot = sword.userData.defaultRotation;
+    const originalRotation = { x: sword.rotation.x, y: sword.rotation.y, z: sword.rotation.z };
+    
+    const swingDuration = 300;
     const startTime = Date.now();
-    const duration = 300;
     
     function animateSwing() {
         const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
+        const progress = Math.min(elapsed / swingDuration, 1);
         
         if (progress < 0.5) {
             const swingProgress = progress * 2;
-            sword.rotation.x = defaultRot.x - Math.PI / 3 * swingProgress;
-            sword.rotation.z = defaultRot.z + Math.PI / 4 * swingProgress;
+            sword.rotation.x = originalRotation.x - Math.PI / 3 * swingProgress;
+            sword.rotation.y = originalRotation.y + Math.PI / 6 * swingProgress;
         } else {
             const returnProgress = (progress - 0.5) * 2;
-            sword.rotation.x = defaultRot.x - Math.PI / 3 * (1 - returnProgress);
-            sword.rotation.z = defaultRot.z + Math.PI / 4 * (1 - returnProgress);
+            sword.rotation.x = originalRotation.x - Math.PI / 3 * (1 - returnProgress);
+            sword.rotation.y = originalRotation.y + Math.PI / 6 * (1 - returnProgress);
         }
         
         if (progress < 1) {
             requestAnimationFrame(animateSwing);
         } else {
-            sword.rotation.x = defaultRot.x;
-            sword.rotation.y = defaultRot.y;
-            sword.rotation.z = defaultRot.z;
-            swordSwinging = false;
+            sword.rotation.x = originalRotation.x;
+            sword.rotation.y = originalRotation.y;
+            sword.rotation.z = originalRotation.z;
+            isSwordSwinging = false;
         }
     }
     
@@ -531,6 +596,17 @@ function addRankDisplay(mesh, rank) {
     if (mesh.rankDisplay) return;
     
     const rankGroup = new THREE.Group();
+    const bgGeometry = new THREE.RingGeometry(0, 1.2, 16);
+    const bgMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8
+    });
+    const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+    bgMesh.rotation.x = -Math.PI / 2;
+    rankGroup.add(bgMesh);
+    
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 64;
@@ -792,7 +868,6 @@ function createTouchControls() {
         border: 3px solid rgba(255, 255, 255, 0.5);
         border-radius: 50%;
         z-index: 1000;
-        touch-action: none;
     `;
     
     const stickLeft = document.createElement('div');
@@ -806,7 +881,6 @@ function createTouchControls() {
         height: 50px;
         background: rgba(255, 255, 255, 0.7);
         border-radius: 50%;
-        pointer-events: none;
     `;
     joystickLeft.appendChild(stickLeft);
     document.body.appendChild(joystickLeft);
@@ -830,7 +904,6 @@ function createTouchControls() {
         color: white;
         z-index: 1000;
         user-select: none;
-        touch-action: none;
     `;
     document.body.appendChild(jumpButton);
     
@@ -853,26 +926,26 @@ function createTouchControls() {
         color: white;
         z-index: 1000;
         user-select: none;
-        touch-action: none;
     `;
     document.body.appendChild(attackButton);
     
-    let joyTouchStartX = 0;
-    let joyTouchStartY = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
     
     joystickLeft.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        isTouchingUI = true;
         const touch = e.touches[0];
         const rect = joystickLeft.getBoundingClientRect();
-        joyTouchStartX = rect.left + rect.width / 2;
-        joyTouchStartY = rect.top + rect.height / 2;
+        touchStartX = rect.left + rect.width / 2;
+        touchStartY = rect.top + rect.height / 2;
     });
     
     joystickLeft.addEventListener('touchmove', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
-        const deltaX = touch.clientX - joyTouchStartX;
-        const deltaY = touch.clientY - joyTouchStartY;
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
         
         const distance = Math.min(35, Math.sqrt(deltaX * deltaX + deltaY * deltaY));
         const angle = Math.atan2(deltaY, deltaX);
@@ -882,15 +955,15 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        // 前後逆修正
-        moveForward = deltaY < -10;
-        moveBackward = deltaY > 10;
+        moveBackward = deltaY < -10;
+        moveForward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
     
     joystickLeft.addEventListener('touchend', (e) => {
         e.preventDefault();
+        isTouchingUI = false;
         stickLeft.style.transform = 'translate(-50%, -50%)';
         moveForward = false;
         moveBackward = false;
@@ -900,14 +973,21 @@ function createTouchControls() {
     
     jumpButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        isTouchingUI = true;
         if (canJump) {
             velocity.y += 18;
             canJump = false;
         }
     });
     
+    jumpButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        isTouchingUI = false;
+    });
+    
     attackButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        isTouchingUI = true;
         if (myId === oniId && gameStarted) {
             swingSword();
             checkSwordHit();
@@ -916,70 +996,33 @@ function createTouchControls() {
         }
     });
     
-    // タッチで視点操作
-    let viewTouchId = null;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    
-    document.addEventListener('touchstart', (e) => {
-        for (let i = 0; i < e.touches.length; i++) {
-            const touch = e.touches[i];
-            const element = document.elementFromPoint(touch.clientX, touch.clientY);
-            
-            if (!element || (!element.closest('#joystick-left') && 
-                !element.closest('#jump-button') && 
-                !element.closest('#attack-button') &&
-                !element.closest('#game-ui') &&
-                !element.closest('#minimap') &&
-                !element.closest('.game-instructions') &&
-                !element.closest('#settings-button') &&
-                !element.closest('#settings-menu'))) {
-                
-                viewTouchId = touch.identifier;
-                touchStartX = touch.clientX;
-                touchStartY = touch.clientY;
-                break;
-            }
-        }
+    attackButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        isTouchingUI = false;
     });
     
-    document.addEventListener('touchmove', (e) => {
-        if (viewTouchId === null) return;
+    renderer.domElement.addEventListener('touchstart', (e) => {
+        if (isTouchingUI) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    });
+    
+    renderer.domElement.addEventListener('touchmove', (e) => {
+        if (isTouchingUI) return;
+        e.preventDefault();
         
-        for (let i = 0; i < e.touches.length; i++) {
-            const touch = e.touches[i];
-            if (touch.identifier === viewTouchId) {
-                e.preventDefault();
-                
-                const deltaX = touch.clientX - touchStartX;
-                const deltaY = touch.clientY - touchStartY;
-                
-                const sensitivityX = 0.003;
-                const sensitivityY = 0.003;
-                
-                const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-                euler.setFromQuaternion(camera.quaternion);
-                
-                euler.y -= deltaX * sensitivityX;
-                euler.x -= deltaY * sensitivityY;
-                euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
-                
-                camera.quaternion.setFromEuler(euler);
-                
-                touchStartX = touch.clientX;
-                touchStartY = touch.clientY;
-                break;
-            }
-        }
-    });
-    
-    document.addEventListener('touchend', (e) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            if (e.changedTouches[i].identifier === viewTouchId) {
-                viewTouchId = null;
-                break;
-            }
-        }
+        const touchX = e.touches[0].clientX;
+        const touchY = e.touches[0].clientY;
+        
+        const deltaX = (touchX - touchStartX) * 0.002;
+        const deltaY = (touchY - touchStartY) * 0.002;
+        
+        camera.rotation.y -= deltaX;
+        camera.rotation.x -= deltaY;
+        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+        
+        touchStartX = touchX;
+        touchStartY = touchY;
     });
 }
 
@@ -993,7 +1036,6 @@ function removeTouchControls() {
     if (attack) attack.remove();
 }
 
-// コントロール設定
 const controls = new PointerLockControls(camera, document.body);
 scene.add(controls.getObject());
 controls.getObject().position.set(0, 1.7, 0);
@@ -1005,6 +1047,7 @@ let moveRight = false;
 let canJump = false;
 
 const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
 
 document.addEventListener('click', () => {
     if (!document.pointerLockElement && !isTabletMode) {
@@ -1058,7 +1101,6 @@ function throwSnowball() {
     updateUI();
 }
 
-// キーボード操作（前後逆修正）
 document.addEventListener('keydown', (event) => {
     if (event.repeat) return;
     switch (event.code) {
@@ -1136,10 +1178,16 @@ function sendPositionUpdate() {
 }
 
 function updateUI() {
+    const currentTime = Date.now();
+    const gameTime = Math.floor((currentTime - gameState.gameStartTime) / 1000);
+    const minutes = Math.floor(gameTime / 60);
+    const seconds = gameTime % 60;
+    
     if (document.getElementById('player-id')) {
         document.getElementById('player-id').textContent = myId;
         document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
         document.getElementById('score').textContent = gameState.score;
+        document.getElementById('game-time').textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         
         const redItemsElement = document.getElementById('red-items');
         if (redItemsElement) redItemsElement.textContent = gameState.redItemsCollected;
@@ -1306,7 +1354,7 @@ function handleFlightMovement() {
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 129.6; // 20.0 * 6.48 (1.8 * 3.6)
+    const speed = 72.0;
     const deltaTime = 1/60;
     const currentPos = controls.getObject().position.clone();
     
@@ -1343,7 +1391,7 @@ function handleNormalMovement() {
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 97.2; // 15.0 * 6.48 (1.8 * 3.6)
+    const speed = 54.0;
     const deltaTime = 1/60;
     
     const forward = new THREE.Vector3();
