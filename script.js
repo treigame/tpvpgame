@@ -29,7 +29,9 @@ let gameState = {
     gameStartTime: Date.now(),
     oniStartTime: null,
     minimapCanvas: null,
-    minimapCtx: null
+    minimapCtx: null,
+    gameTimeLimit: 240,
+    roundStartTime: null
 };
 
 let isTabletMode = false;
@@ -103,6 +105,12 @@ ws.onmessage = (event) => {
             showMessage('START!', 'success', 1500);
             startGame();
         }
+    } else if (data.type === 'game_over') {
+        const winner = data.winner === 'players' ? 'Players Win!' : 'Tiger Wins!';
+        showMessage(winner, 'success', 10000);
+        setTimeout(() => {
+            location.reload();
+        }, 10000);
     } else if (data.type === 'player_update') {
         if (data.id !== myId) {
             if (!players[data.id]) {
@@ -219,6 +227,13 @@ function startGame() {
     controls.getObject().position.y = 1.7;
     velocity.set(0, 0, 0);
     canJump = true;
+    gameState.roundStartTime = Date.now();
+    window.oneMinuteWarningShown = false;
+    window.thirtySecWarningShown = false;
+    window.fifteenSecWarningShown = false;
+    for (let i = 1; i <= 5; i++) {
+        window[`sec${i}Shown`] = false;
+    }
     showMessage('ゲーム開始！', 'success', 2000);
 }
 
@@ -426,7 +441,7 @@ function createUI() {
             </div>
         </div>
         <div id="timer-info" style="margin-top: 10px;">
-            <div>ゲーム時間: <span id="game-time">00:00</span></div>
+            <div>ゲーム時間: <span id="game-time">00:00</span> | 残り: <span id="remaining-time">04:00</span></div>
             <div id="oni-time" style="display: ${myId === oniId ? 'block' : 'none'}">
                 鬼時間: <span id="oni-duration">00:00</span></div>
         </div>
@@ -955,8 +970,8 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveBackward = deltaY < -10;
-        moveForward = deltaY > 10;
+        moveForward = deltaY < -10;
+        moveBackward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1178,6 +1193,36 @@ function updateUI() {
     const minutes = Math.floor(gameTime / 60);
     const seconds = gameTime % 60;
     
+    let remainingSeconds = 0;
+    if (gameState.roundStartTime && gameStarted) {
+        const elapsed = Math.floor((currentTime - gameState.roundStartTime) / 1000);
+        remainingSeconds = Math.max(0, gameState.gameTimeLimit - elapsed);
+        
+        const remainingMinutes = Math.floor(remainingSeconds / 60);
+        const remainingSecs = remainingSeconds % 60;
+        
+        if (remainingSeconds === 60 && !window.oneMinuteWarningShown) {
+            showMessage('1 minute left!', 'info', 3000);
+            window.oneMinuteWarningShown = true;
+        } else if (remainingSeconds === 30 && !window.thirtySecWarningShown) {
+            showMessage('30 seconds left!', 'info', 3000);
+            window.thirtySecWarningShown = true;
+        } else if (remainingSeconds === 15 && !window.fifteenSecWarningShown) {
+            showMessage('15 seconds left!', 'info', 3000);
+            window.fifteenSecWarningShown = true;
+        } else if (remainingSeconds <= 5 && remainingSeconds > 0) {
+            if (!window[`sec${remainingSeconds}Shown`]) {
+                showMessage(remainingSeconds.toString(), 'info', 1000);
+                window[`sec${remainingSeconds}Shown`] = true;
+            }
+        }
+        
+        if (document.getElementById('remaining-time')) {
+            document.getElementById('remaining-time').textContent = 
+                `${remainingMinutes.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
+        }
+    }
+    
     if (document.getElementById('player-id')) {
         document.getElementById('player-id').textContent = myId;
         document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
@@ -1272,6 +1317,16 @@ function showMessage(text, type = 'info', duration = 3000) {
 
 function checkCollisions(targetPosition) {
     const playerRadius = 1.0;
+    
+    for (const id in players) {
+        if (id === myId) continue;
+        const otherPlayer = players[id];
+        const distance = targetPosition.distanceTo(otherPlayer.position);
+        if (distance < playerRadius * 2) {
+            return true;
+        }
+    }
+    
     for (const block of blocks) {
         const blockBox = new THREE.Box3().setFromObject(block);
         const playerBox = new THREE.Box3().setFromCenterAndSize(targetPosition, new THREE.Vector3(playerRadius * 2, 3.4, playerRadius * 2));
@@ -1343,8 +1398,8 @@ function animate() {
 
 function handleFlightMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z += 1;
-    if (moveBackward) inputDir.z -= 1;
+    if (moveForward) inputDir.z -= 1;
+    if (moveBackward) inputDir.z += 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
@@ -1380,8 +1435,8 @@ function handleFlightMovement() {
 
 function handleNormalMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z += 1;
-    if (moveBackward) inputDir.z -= 1;
+    if (moveForward) inputDir.z -= 1;
+    if (moveBackward) inputDir.z += 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
