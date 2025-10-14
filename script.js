@@ -1,4 +1,12 @@
-import * as THREE from 'three';
+attackButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (myId === oniId && gameStarted) {
+            playSwordSwing();
+            checkSwordHit();
+        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
+            throwSnowball();
+        }
+    });import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -829,6 +837,7 @@ function createTouchControls() {
         border: 3px solid rgba(255, 255, 255, 0.5);
         border-radius: 50%;
         z-index: 1000;
+        touch-action: none;
     `;
     
     const stickLeft = document.createElement('div');
@@ -842,6 +851,7 @@ function createTouchControls() {
         height: 50px;
         background: rgba(255, 255, 255, 0.7);
         border-radius: 50%;
+        pointer-events: none;
     `;
     joystickLeft.appendChild(stickLeft);
     document.body.appendChild(joystickLeft);
@@ -865,6 +875,7 @@ function createTouchControls() {
         color: white;
         z-index: 1000;
         user-select: none;
+        touch-action: none;
     `;
     document.body.appendChild(jumpButton);
     
@@ -887,14 +898,23 @@ function createTouchControls() {
         color: white;
         z-index: 1000;
         user-select: none;
+        touch-action: none;
     `;
     document.body.appendChild(attackButton);
     
     let touchStartX = 0;
     let touchStartY = 0;
+    let isJoystickActive = false;
+    
+    // タッチ視点操作用
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    let isLookTouchActive = false;
     
     joystickLeft.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        isJoystickActive = true;
         const touch = e.touches[0];
         const rect = joystickLeft.getBoundingClientRect();
         touchStartX = rect.left + rect.width / 2;
@@ -903,6 +923,9 @@ function createTouchControls() {
     
     joystickLeft.addEventListener('touchmove', (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        if (!isJoystickActive) return;
+        
         const touch = e.touches[0];
         const deltaX = touch.clientX - touchStartX;
         const deltaY = touch.clientY - touchStartY;
@@ -915,14 +938,16 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveForward = deltaY < -10;
-        moveBackward = deltaY > 10;
+        moveBackward = deltaY < -10;
+        moveForward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
     
     joystickLeft.addEventListener('touchend', (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        isJoystickActive = false;
         stickLeft.style.transform = 'translate(-50%, -50%)';
         moveForward = false;
         moveBackward = false;
@@ -932,6 +957,7 @@ function createTouchControls() {
     
     jumpButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         if (canJump) {
             velocity.y += 18;
             canJump = false;
@@ -940,11 +966,65 @@ function createTouchControls() {
     
     attackButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         if (myId === oniId && gameStarted) {
+            playSwordSwing();
             checkSwordHit();
         } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
+    });
+    
+    // 画面全体での視点操作
+    document.addEventListener('touchstart', (e) => {
+        // ボタンやジョイスティックをタッチしている場合は視点操作しない
+        const target = e.target;
+        if (target.id === 'joystick-left' || 
+            target.id === 'jump-button' || 
+            target.id === 'attack-button' ||
+            target.parentElement?.id === 'joystick-left') {
+            return;
+        }
+        
+        isLookTouchActive = true;
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
+    });
+    
+    document.addEventListener('touchmove', (e) => {
+        if (!isLookTouchActive) return;
+        
+        // ボタンやジョイスティックをタッチしている場合は視点操作しない
+        const target = e.target;
+        if (target.id === 'joystick-left' || 
+            target.id === 'jump-button' || 
+            target.id === 'attack-button' ||
+            target.parentElement?.id === 'joystick-left') {
+            return;
+        }
+        
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - lastTouchX;
+        const deltaY = touch.clientY - lastTouchY;
+        
+        // カメラの回転を更新
+        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        euler.setFromQuaternion(camera.quaternion);
+        
+        euler.y -= deltaX * 0.002;
+        euler.x -= deltaY * 0.002;
+        
+        // 上下の視点制限
+        euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+        
+        camera.quaternion.setFromEuler(euler);
+        
+        lastTouchX = touch.clientX;
+        lastTouchY = touch.clientY;
+    });
+    
+    document.addEventListener('touchend', (e) => {
+        isLookTouchActive = false;
     });
 }
 
@@ -980,12 +1060,48 @@ document.addEventListener('click', () => {
 document.addEventListener('mousedown', (e) => {
     if (document.pointerLockElement && e.button === 0) {
         if (myId === oniId && gameStarted) {
+            playSwordSwing();
             checkSwordHit();
         } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
     }
 });
+
+function playSwordSwing() {
+    if (!camera.sword) return;
+    
+    const sword = camera.sword;
+    const originalRotation = { x: sword.rotation.x, y: sword.rotation.y, z: sword.rotation.z };
+    const originalPosition = { x: sword.position.x, y: sword.position.y, z: sword.position.z };
+    
+    const swingDuration = 300;
+    const startTime = Date.now();
+    
+    function animateSwing() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / swingDuration, 1);
+        
+        if (progress < 0.5) {
+            const swingProgress = progress * 2;
+            sword.rotation.x = originalRotation.x - Math.PI / 3 * swingProgress;
+            sword.position.z = originalPosition.z - 0.3 * swingProgress;
+        } else {
+            const swingProgress = (progress - 0.5) * 2;
+            sword.rotation.x = originalRotation.x - Math.PI / 3 + Math.PI / 3 * swingProgress;
+            sword.position.z = originalPosition.z - 0.3 + 0.3 * swingProgress;
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateSwing);
+        } else {
+            sword.rotation.set(originalRotation.x, originalRotation.y, originalRotation.z);
+            sword.position.set(originalPosition.x, originalPosition.y, originalPosition.z);
+        }
+    }
+    
+    animateSwing();
+}
 
 function checkSwordHit() {
     if (myId !== oniId) return;
@@ -1027,7 +1143,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1035,7 +1151,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1066,7 +1182,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1074,7 +1190,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1275,7 +1391,7 @@ function handleFlightMovement() {
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 20.0;
+    const speed = 36.0;
     const deltaTime = 1/60;
     const currentPos = controls.getObject().position.clone();
     
@@ -1312,7 +1428,7 @@ function handleNormalMovement() {
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 15.0;
+    const speed = 27.0;
     const deltaTime = 1/60;
     
     const forward = new THREE.Vector3();
