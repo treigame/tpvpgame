@@ -105,31 +105,6 @@
             }
         }
         
-        .controls-hint {
-            margin-top: 10px;
-            font-size: 12px;
-            opacity: 0.7;
-            line-height: 1.4;
-        }
-        
-        .error-message, .success-message {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 9999;
-            text-align: center;
-            font-size: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            display: none;
-        }
-        
-        .error-message { background: rgba(255, 0, 0, 0.9); }
-        .success-message { background: rgba(0, 255, 0, 0.9); }
-        
         .crosshair {
             position: fixed;
             top: 50%;
@@ -230,20 +205,17 @@
 
     <div id="game-instructions" class="game-instructions">
         <div><strong>🎮 操作方法</strong></div>
-        <div><strong>WASD:</strong> 移動 | <strong>Space:</strong> ジャンプ | <strong>マウス:</strong> 視点移動</div>
-        <div class="controls-hint">
+        <div><strong>WASD:</strong> 移動（前後逆修正済み） | <strong>Space:</strong> ジャンプ | <strong>マウス:</strong> 視点移動</div>
+        <div style="margin-top: 10px; font-size: 12px; opacity: 0.7; line-height: 1.4;">
             <strong>🔴 赤いアイテムを8個集めて雪玉で鬼を倒そう！</strong><br>
-            👹 <strong>鬼:</strong> 他のプレイヤーにタッチ/剣で攻撃して役割交代<br>
+            👹 <strong>鬼:</strong> クリックで剣を振る！他プレイヤーにタッチ<br>
             🏃 <strong>逃走者:</strong> 鬼から逃げて赤いアイテムを集める<br>
-            🧱 <strong>建物:</strong> 隠れ場所として活用しよう<br>
-            ⚙️ <strong>Settings:</strong> 右上からタブレットモード切替可能<br>
-            ❓ <strong>F1キー:</strong> この説明を再表示
+            ⚙️ <strong>Settings:</strong> 右上からタブレットモード切替<br>
+            💨 <strong>速度:</strong> 通常の3.6倍の高速移動
         </div>
     </div>
 
     <div id="help-button" class="help-button" title="ヘルプ (F1)">?</div>
-    <div id="error-message" class="error-message"></div>
-    <div id="success-message" class="success-message"></div>
 
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -320,15 +292,6 @@
             }
         }
 
-        function showMessage(text, type = 'info', duration = 3000) {
-            let messageElement = type === 'error' ? document.getElementById('error-message') : document.getElementById('success-message');
-            if (messageElement) {
-                messageElement.textContent = text;
-                messageElement.style.display = 'block';
-                setTimeout(() => messageElement.style.display = 'none', duration);
-            }
-        }
-
         function onGameLoaded() {
             gameLoaded = true;
             updateConnectionStatus('connected');
@@ -344,10 +307,9 @@
             setTimeout(() => {
                 const script = document.createElement('script');
                 script.type = 'module';
-                script.src = 'script.js';
+                script.src = 'game.js';
                 script.onload = onGameLoaded;
                 script.onerror = () => {
-                    showMessage('ゲームの読み込みに失敗しました。', 'error');
                     updateConnectionStatus('disconnected');
                 };
                 document.body.appendChild(script);
@@ -357,14 +319,6 @@
         document.getElementById('help-button').addEventListener('click', toggleInstructions);
         document.addEventListener('keydown', (e) => {
             if (e.key === 'F1') { e.preventDefault(); toggleInstructions(); }
-            if (e.key === 'Escape' && document.pointerLockElement) document.exitPointerLock();
-        });
-
-        window.addEventListener('beforeunload', (e) => {
-            if (gameLoaded && userInteracted && connectionStatus === 'connected') {
-                e.preventDefault();
-                e.returnValue = 'ゲームを終了しますか？';
-            }
         });
     </script>
 </body>
