@@ -979,8 +979,8 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveBackward = deltaY < -10;
-        moveForward = deltaY > 10;
+        moveForward = deltaY < -10;
+        moveBackward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1081,11 +1081,28 @@ document.addEventListener('click', () => {
 
 document.addEventListener('mousedown', (e) => {
     if (document.pointerLockElement && e.button === 0) {
-        if (canThrowSnowball && myId !== oniId && gameStarted) {
+        if (myId === oniId && gameStarted) {
+            swingSword();
+            checkSwordAttack();
+        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
     }
 });
+
+function checkSwordAttack() {
+    if (myId !== oniId || !gameStarted || isStunned) return;
+    
+    for (const id in players) {
+        if (id === myId) continue;
+        const distance = controls.getObject().position.distanceTo(players[id].position);
+        if (distance < 7.5) {
+            console.log(`⚔️ 剣攻撃！ 距離 ${distance.toFixed(2)}m - プレイヤー ${id}`);
+            ws.send(JSON.stringify({ type: 'sword_attack', oniId: myId, taggedId: id }));
+            return;
+        }
+    }
+}
 
 function checkAutoTag() {
     if (myId !== oniId || !gameStarted || isStunned) return;
@@ -1093,9 +1110,10 @@ function checkAutoTag() {
     for (const id in players) {
         if (id === myId) continue;
         const distance = controls.getObject().position.distanceTo(players[id].position);
-        if (distance < 3.0) {
+        if (distance < 2.5) {
+            console.log(`🎯 自動タッチ検出: 距離 ${distance.toFixed(2)}m - プレイヤー ${id}`);
             ws.send(JSON.stringify({ type: 'auto_tag', oniId: myId, taggedId: id }));
-            break;
+            return;
         }
     }
 }
@@ -1431,13 +1449,13 @@ function animate() {
 
 function handleFlightMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z += 1;
-    if (moveBackward) inputDir.z -= 1;
+    if (moveForward) inputDir.z -= 1;
+    if (moveBackward) inputDir.z += 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
     
-    const speed = 72.0;
+    const speed = 100.0;
     const deltaTime = 1/60;
     const currentPos = controls.getObject().position.clone();
     
@@ -1462,8 +1480,13 @@ function handleFlightMovement() {
     
     controls.getObject().position.x = currentPos.x;
     controls.getObject().position.z = currentPos.z;
-    velocity.y *= 0.9;
+    velocity.y *= 0.85;
     controls.getObject().position.y += velocity.y * (1/60);
+    
+    if (controls.getObject().position.y > 200) {
+        controls.getObject().position.y = 200;
+        velocity.y = 0;
+    }
 }
 
 function handleNormalMovement() {
@@ -1479,8 +1502,8 @@ function handleNormalMovement() {
     }
     
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z += 1;
-    if (moveBackward) inputDir.z -= 1;
+    if (moveForward) inputDir.z -= 1;
+    if (moveBackward) inputDir.z += 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
