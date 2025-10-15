@@ -1014,7 +1014,7 @@ function createTouchControls() {
         isTouchingUI = true;
         if (myId === oniId && gameStarted) {
             swingSword();
-            checkSwordHit();
+            checkSwordAttack();
         } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
@@ -1143,7 +1143,7 @@ function throwSnowball() {
 
 document.addEventListener('keydown', (event) => {
     if (event.repeat) return;
-    if (isStunned) return;
+    if (isStunned && event.code !== 'Space') return;
     
     switch (event.code) {
         case 'KeyW':
@@ -1171,9 +1171,11 @@ document.addEventListener('keydown', (event) => {
                 } else {
                     velocity.y += 25;
                 }
-            } else if (canJump) {
-                velocity.y += 18;
-                canJump = false;
+            } else {
+                if (canJump && !isStunned) {
+                    velocity.y += 18;
+                    canJump = false;
+                }
             }
             break;
         case 'ShiftLeft':
