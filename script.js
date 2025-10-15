@@ -72,6 +72,8 @@ ws.onmessage = (event) => {
         if (myId === oniId && gameStarted) {
             gameState.oniStartTime = Date.now();
             addSword(camera);
+        } else {
+            addHands(camera);
         }
         
         for (const id in data.players) {
@@ -84,7 +86,6 @@ ws.onmessage = (event) => {
         
         updateUI();
     } else if (data.type === 'force_position') {
-        console.log(`強制位置設定: (${data.x.toFixed(1)}, ${data.y}, ${data.z.toFixed(1)})`);
         controls.getObject().position.set(data.x, data.y, data.z);
         velocity.set(0, 0, 0);
         canJump = true;
@@ -98,11 +99,6 @@ ws.onmessage = (event) => {
         gameCountdown = data.countdown;
         if (data.countdown > 0) {
             showMessage(`ゲーム開始まで ${data.countdown}秒`, 'info', 1000);
-            if (controls.getObject().position.y !== 1.7) {
-                controls.getObject().position.y = 1.7;
-                velocity.set(0, 0, 0);
-                canJump = true;
-            }
         } else {
             showMessage('START!', 'success', 1500);
             startGame();
@@ -110,9 +106,7 @@ ws.onmessage = (event) => {
     } else if (data.type === 'game_over') {
         const winner = data.winner === 'players' ? 'Players Win!' : 'Tiger Wins!';
         showMessage(winner, 'success', 10000);
-        setTimeout(() => {
-            location.reload();
-        }, 10000);
+        setTimeout(() => location.reload(), 10000);
     } else if (data.type === 'player_update') {
         if (data.id !== myId) {
             if (!players[data.id]) {
@@ -138,6 +132,7 @@ ws.onmessage = (event) => {
             gameState.score += 10;
             if (gameState.redItemsCollected >= 8) {
                 canThrowSnowball = true;
+                addSnowball(camera);
                 showMessage('雪玉が投げられます！', 'success', 3000);
             }
         }
@@ -176,7 +171,7 @@ ws.onmessage = (event) => {
         const oldOni = oniId;
         oniId = data.oniId;
         
-        console.log(`🔄 鬼変更: ${oldOni} → ${oniId}`);
+        console.log(`🔄 鬼変更受信: ${oldOni} → ${oniId}, 自分: ${myId}`);
         
         if (data.taggedPlayerId === myId) {
             isStunned = true;
@@ -190,31 +185,28 @@ ws.onmessage = (event) => {
             gameState.oniStartTime = null;
             removeSword(camera);
             removeSnowball(camera);
+            addHands(camera);
         }
         
         if (oniId === myId) {
             gameState.oniStartTime = Date.now();
-            addSword(camera);
+            removeHands(camera);
             removeSnowball(camera);
+            addSword(camera);
             canThrowSnowball = false;
             gameState.redItemsCollected = 0;
-        } else {
-            removeSword(camera);
-            if (canThrowSnowball) {
-                addSnowball(camera);
+        }
+        
+        for (const id in players) {
+            if (id === oniId) {
+                removeHands(players[id]);
+                removeSnowball(players[id]);
+                addSword(players[id]);
+            } else {
+                removeSword(players[id]);
+                removeSnowball(players[id]);
+                addHands(players[id]);
             }
-        }
-        
-        if (players[oldOni]) {
-            removeSword(players[oldOni]);
-            removeSnowball(players[oldOni]);
-            addHands(players[oldOni]);
-        }
-        
-        if (players[oniId]) {
-            removeHands(players[oniId]);
-            removeSnowball(players[oniId]);
-            addSword(players[oniId]);
         }
         
         updatePlayerColors();
@@ -457,8 +449,8 @@ function createUI() {
             <div id="red-items-count" style="display: ${myId !== oniId ? 'block' : 'none'}">
                 赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/8
             </div>
-            <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #8a2be2;">
-                雪玉投擲可能！
+            <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #ffffff;">
+                ⚪ 雪玉投擲可能！
             </div>
         </div>
         <div id="timer-info" style="margin-top: 10px;">
@@ -561,13 +553,25 @@ function addHands(mesh) {
         metalness: 0.0
     });
     
+    const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.8), handMaterial);
+    leftArm.position.set(-0.6, -0.2, -0.3);
+    leftArm.rotation.z = Math.PI / 6;
+    leftArm.castShadow = true;
+    handsGroup.add(leftArm);
+    
     const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
-    leftHand.position.set(-0.6, 0, -0.4);
+    leftHand.position.set(-0.8, -0.6, -0.3);
     leftHand.castShadow = true;
     handsGroup.add(leftHand);
     
+    const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.8), handMaterial);
+    rightArm.position.set(0.6, -0.2, -0.3);
+    rightArm.rotation.z = -Math.PI / 6;
+    rightArm.castShadow = true;
+    handsGroup.add(rightArm);
+    
     const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
-    rightHand.position.set(0.6, 0, -0.4);
+    rightHand.position.set(0.8, -0.6, -0.3);
     rightHand.castShadow = true;
     handsGroup.add(rightHand);
     
@@ -585,14 +589,14 @@ function removeHands(mesh) {
 function addSnowball(mesh) {
     if (mesh.heldSnowball) return;
     
-    const snowballGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const snowballGeometry = new THREE.SphereGeometry(0.25, 16, 16);
     const snowballMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffff,
         roughness: 0.8,
         metalness: 0.1
     });
     const snowball = new THREE.Mesh(snowballGeometry, snowballMaterial);
-    snowball.position.set(0.8, -0.5, -0.5);
+    snowball.position.set(0.8, -0.6, -0.5);
     snowball.castShadow = true;
     
     mesh.add(snowball);
@@ -1049,8 +1053,8 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveForward = deltaY < -10;
-        moveBackward = deltaY > 10;
+        moveBackward = deltaY < -10;
+        moveForward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1219,7 +1223,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1227,7 +1231,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1264,7 +1268,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1272,7 +1276,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1522,8 +1526,8 @@ function animate() {
 
 function handleFlightMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z -= 1;
-    if (moveBackward) inputDir.z += 1;
+    if (moveForward) inputDir.z += 1;
+    if (moveBackward) inputDir.z -= 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
@@ -1575,8 +1579,8 @@ function handleNormalMovement() {
     }
     
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z -= 1;
-    if (moveBackward) inputDir.z += 1;
+    if (moveForward) inputDir.z += 1;
+    if (moveBackward) inputDir.z -= 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
