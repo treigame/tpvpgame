@@ -176,6 +176,8 @@ ws.onmessage = (event) => {
         const oldOni = oniId;
         oniId = data.oniId;
         
+        console.log(`🔄 鬼変更: ${oldOni} → ${oniId}`);
+        
         if (data.taggedPlayerId === myId) {
             isStunned = true;
             stunEndTime = Date.now() + 5000;
@@ -186,22 +188,32 @@ ws.onmessage = (event) => {
         if (oldOni === myId && gameState.oniStartTime) {
             gameState.timeAsOni += Date.now() - gameState.oniStartTime;
             gameState.oniStartTime = null;
+            removeSword(camera);
+            removeSnowball(camera);
         }
+        
         if (oniId === myId) {
             gameState.oniStartTime = Date.now();
-        }
-        
-        if (oldOni === myId) {
-            removeSword(camera);
-        } else if (players[oldOni] && players[oldOni].sword) {
-            removeSword(players[oldOni]);
-        }
-        
-        if (oniId === myId) {
             addSword(camera);
+            removeSnowball(camera);
             canThrowSnowball = false;
             gameState.redItemsCollected = 0;
-        } else if (players[oniId] && !players[oniId].sword) {
+        } else {
+            removeSword(camera);
+            if (canThrowSnowball) {
+                addSnowball(camera);
+            }
+        }
+        
+        if (players[oldOni]) {
+            removeSword(players[oldOni]);
+            removeSnowball(players[oldOni]);
+            addHands(players[oldOni]);
+        }
+        
+        if (players[oniId]) {
+            removeHands(players[oniId]);
+            removeSnowball(players[oniId]);
             addSword(players[oniId]);
         }
         
@@ -522,6 +534,8 @@ function createPlayerMesh(id, data) {
     
     if (id === oniId) {
         addSword(group);
+    } else {
+        addHands(group);
     }
     
     return group;
@@ -533,6 +547,62 @@ function updatePlayerColors() {
         if (player.bodyMesh) {
             player.bodyMesh.material.color.setHex(id === oniId ? 0x0000ff : 0x00ff00);
         }
+    }
+}
+
+function addHands(mesh) {
+    if (mesh.hands) return;
+    
+    const handsGroup = new THREE.Group();
+    
+    const handMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffdbac,
+        roughness: 0.6,
+        metalness: 0.0
+    });
+    
+    const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
+    leftHand.position.set(-0.6, 0, -0.4);
+    leftHand.castShadow = true;
+    handsGroup.add(leftHand);
+    
+    const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
+    rightHand.position.set(0.6, 0, -0.4);
+    rightHand.castShadow = true;
+    handsGroup.add(rightHand);
+    
+    mesh.add(handsGroup);
+    mesh.hands = handsGroup;
+}
+
+function removeHands(mesh) {
+    if (mesh.hands) {
+        mesh.remove(mesh.hands);
+        mesh.hands = null;
+    }
+}
+
+function addSnowball(mesh) {
+    if (mesh.heldSnowball) return;
+    
+    const snowballGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const snowballMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff,
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    const snowball = new THREE.Mesh(snowballGeometry, snowballMaterial);
+    snowball.position.set(0.8, -0.5, -0.5);
+    snowball.castShadow = true;
+    
+    mesh.add(snowball);
+    mesh.heldSnowball = snowball;
+}
+
+function removeSnowball(mesh) {
+    if (mesh.heldSnowball) {
+        mesh.remove(mesh.heldSnowball);
+        mesh.heldSnowball = null;
     }
 }
 
@@ -704,9 +774,9 @@ function createRedItemMesh(id, data) {
 }
 
 function createSnowballMesh(id, data) {
-    const geometry = new THREE.SphereGeometry(0.3, 8, 8);
+    const geometry = new THREE.SphereGeometry(0.3, 16, 16);
     const material = new THREE.MeshStandardMaterial({ 
-        color: 0x8a2be2,
+        color: 0xffffff,
         roughness: 0.8,
         metalness: 0.1
     });
@@ -1138,6 +1208,7 @@ function throwSnowball() {
     canThrowSnowball = false;
     gameState.redItemsCollected = 0;
     gameState.score += 100;
+    removeSnowball(camera);
     updateUI();
 }
 

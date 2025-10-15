@@ -692,7 +692,8 @@ wss.on('connection', (ws, req) => {
                         players[oniId].oniStartTime = Date.now();
                         gameStats.totalOniChanges++;
                         
-                        broadcast({ type: 'oni_changed', oniId: oniId });
+                        console.log(`🔄 become_oni: 鬼変更 ${oldOni} → ${oniId}`);
+                        broadcast({ type: 'oni_changed', oniId: oniId, taggedPlayerId: data.playerId });
                     }
                     break;
                     
@@ -734,6 +735,44 @@ wss.on('connection', (ws, req) => {
                     }
                     break;
                     
+                case 'sword_attack':
+                    if (!gameStarted) return;
+                    
+                    if (data.oniId === oniId && data.oniId === id && players[data.taggedId]) {
+                        const oniPos = players[oniId];
+                        const targetPos = players[data.taggedId];
+                        const distance = Math.sqrt(
+                            Math.pow(oniPos.x - targetPos.x, 2) + 
+                            Math.pow(oniPos.z - targetPos.z, 2)
+                        );
+                        
+                        console.log(`⚔️ 剣攻撃判定: 鬼 ${oniId} → プレイヤー ${data.taggedId}。距離: ${distance.toFixed(2)}`);
+                        
+                        if (distance <= 7.5) {
+                            const oldOni = oniId;
+                            
+                            if (players[oldOni]) {
+                                players[oldOni].totalOniTime += Date.now() - (players[oldOni].oniStartTime || Date.now());
+                                players[oldOni].score += 100;
+                            }
+                            
+                            oniId = data.taggedId;
+                            players[oniId].oniStartTime = Date.now();
+                            gameStats.totalOniChanges++;
+                            
+                            console.log(`✅ 剣攻撃成功！鬼が変更されました: ${oldOni} → ${oniId}`);
+                            
+                            broadcast({ 
+                                type: 'oni_changed', 
+                                oniId: oniId,
+                                taggedPlayerId: data.taggedId
+                            });
+                        } else {
+                            console.log(`❌ 剣攻撃失敗: 距離が遠すぎます (${distance.toFixed(2)} > 7.5)`);
+                        }
+                    }
+                    break;
+                    
                 case 'tag_player':
                     if (!gameStarted) return;
                     
@@ -761,7 +800,7 @@ wss.on('connection', (ws, req) => {
                             
                             console.log(`✅ 鬼が変更されました: ${oldOni} → ${oniId}`);
                             
-                            const changeMessage = { type: 'oni_changed', oniId: oniId };
+                            const changeMessage = { type: 'oni_changed', oniId: oniId, taggedPlayerId: data.taggedId };
                             broadcast(changeMessage);
                         } else {
                             console.log(`❌ タッチ失敗: 距離が遠すぎます (${distance.toFixed(2)} > 5.0)`);
@@ -777,13 +816,15 @@ wss.on('connection', (ws, req) => {
     ws.on('close', () => {
         console.log(`プレイヤーが切断しました: ${id}`);
         
+        const wasOni = (id === oniId);
+        
         delete players[id];
         delete playerRanks[id];
         playerUpdateLimits.delete(id);
         
         broadcast({ type: 'remove_player', id: id });
         
-        if (id === oniId) {
+        if (wasOni) {
             selectRandomOni();
         }
         
