@@ -73,7 +73,7 @@ ws.onmessage = (event) => {
             gameState.oniStartTime = Date.now();
             addSword(camera);
         } else {
-            addHands(camera);
+            addRightHand(camera);
         }
         
         for (const id in data.players) {
@@ -185,12 +185,12 @@ ws.onmessage = (event) => {
             gameState.oniStartTime = null;
             removeSword(camera);
             removeSnowball(camera);
-            addHands(camera);
+            addRightHand(camera);
         }
         
         if (oniId === myId) {
             gameState.oniStartTime = Date.now();
-            removeHands(camera);
+            removeRightHand(camera);
             removeSnowball(camera);
             addSword(camera);
             canThrowSnowball = false;
@@ -199,13 +199,13 @@ ws.onmessage = (event) => {
         
         for (const id in players) {
             if (id === oniId) {
-                removeHands(players[id]);
+                removeRightHand(players[id]);
                 removeSnowball(players[id]);
                 addSword(players[id]);
             } else {
                 removeSword(players[id]);
                 removeSnowball(players[id]);
-                addHands(players[id]);
+                addRightHand(players[id]);
             }
         }
         
@@ -527,7 +527,7 @@ function createPlayerMesh(id, data) {
     if (id === oniId) {
         addSword(group);
     } else {
-        addHands(group);
+        addRightHand(group);
     }
     
     return group;
@@ -542,10 +542,10 @@ function updatePlayerColors() {
     }
 }
 
-function addHands(mesh) {
-    if (mesh.hands) return;
+function addRightHand(mesh) {
+    if (mesh.rightHand) return;
     
-    const handsGroup = new THREE.Group();
+    const handGroup = new THREE.Group();
     
     const handMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffdbac,
@@ -553,36 +553,25 @@ function addHands(mesh) {
         metalness: 0.0
     });
     
-    const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.8), handMaterial);
-    leftArm.position.set(-0.6, -0.2, -0.3);
-    leftArm.rotation.z = Math.PI / 6;
-    leftArm.castShadow = true;
-    handsGroup.add(leftArm);
-    
-    const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
-    leftHand.position.set(-0.8, -0.6, -0.3);
-    leftHand.castShadow = true;
-    handsGroup.add(leftHand);
-    
     const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.8), handMaterial);
     rightArm.position.set(0.6, -0.2, -0.3);
     rightArm.rotation.z = -Math.PI / 6;
     rightArm.castShadow = true;
-    handsGroup.add(rightArm);
+    handGroup.add(rightArm);
     
     const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
     rightHand.position.set(0.8, -0.6, -0.3);
     rightHand.castShadow = true;
-    handsGroup.add(rightHand);
+    handGroup.add(rightHand);
     
-    mesh.add(handsGroup);
-    mesh.hands = handsGroup;
+    mesh.add(handGroup);
+    mesh.rightHand = handGroup;
 }
 
-function removeHands(mesh) {
-    if (mesh.hands) {
-        mesh.remove(mesh.hands);
-        mesh.hands = null;
+function removeRightHand(mesh) {
+    if (mesh.rightHand) {
+        mesh.remove(mesh.rightHand);
+        mesh.rightHand = null;
     }
 }
 
@@ -1053,8 +1042,8 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveBackward = deltaY < -10;
-        moveForward = deltaY > 10;
+        moveForward = deltaY < -10;
+        moveBackward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1223,7 +1212,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = true;
+            moveForward = true;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1231,7 +1220,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = true;
+            moveBackward = true;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1268,7 +1257,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = false;
+            moveForward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1276,7 +1265,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = false;
+            moveBackward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1526,8 +1515,8 @@ function animate() {
 
 function handleFlightMovement() {
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z += 1;
-    if (moveBackward) inputDir.z -= 1;
+    if (moveForward) inputDir.z -= 1;
+    if (moveBackward) inputDir.z += 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
@@ -1579,8 +1568,8 @@ function handleNormalMovement() {
     }
     
     const inputDir = new THREE.Vector3();
-    if (moveForward) inputDir.z += 1;
-    if (moveBackward) inputDir.z -= 1;
+    if (moveForward) inputDir.z -= 1;
+    if (moveBackward) inputDir.z += 1;
     if (moveLeft) inputDir.x -= 1;
     if (moveRight) inputDir.x += 1;
     if (inputDir.length() > 0) inputDir.normalize();
