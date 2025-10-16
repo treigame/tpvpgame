@@ -559,11 +559,6 @@ function addRightHand(mesh) {
     rightArm.castShadow = true;
     handGroup.add(rightArm);
     
-    const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.15), handMaterial);
-    rightHand.position.set(0.8, -0.6, -0.3);
-    rightHand.castShadow = true;
-    handGroup.add(rightHand);
-    
     mesh.add(handGroup);
     mesh.rightHand = handGroup;
 }
