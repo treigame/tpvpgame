@@ -1207,7 +1207,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = true;
+            moveBackward = true;  // Changed from moveForward to moveBackward
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1215,7 +1215,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = true;
+            moveForward = true;  // Changed from moveBackward to moveForward
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1252,7 +1252,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = false;
+            moveBackward = false;  // Changed from moveForward to moveBackward
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1260,7 +1260,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = false;
+            moveForward = false;  // Changed from moveBackward to moveForward
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1268,7 +1268,6 @@ document.addEventListener('keyup', (event) => {
             break;
     }
 });
-
 let lastSentPosition = new THREE.Vector3();
 let lastSentTime = 0;
 
