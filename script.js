@@ -23,17 +23,6 @@ let isSwordSwinging = false;
 let isStunned = false;
 let stunEndTime = 0;
 
-// 投票システム
-let votingActive = false;
-let hasVoted = false;
-let currentGameMode = null; // 'pvp', 'tag', 'parkour'
-
-// PVPモード
-let playerHealth = {}; // { playerId: health }
-let myHealth = 10;
-const MAX_HEALTH = 10;
-let isDead = false;
-
 let gameState = {
     score: 0,
     redItemsCollected: 0,
@@ -66,20 +55,11 @@ ws.onmessage = (event) => {
         oniId = data.oniId;
         gameStarted = data.gameStarted || false;
         waitingForPlayers = data.waitingForPlayers || false;
-        votingActive = data.votingActive || false;
-        currentGameMode = data.currentGameMode || null;
-        playerHealth = data.playerHealth || {};
-        
-        if (playerHealth[myId]) {
-            myHealth = playerHealth[myId];
-        }
         
         createUI();
         createSettingsUI();
         
-        if (votingActive) {
-            showVotingUI();
-        } else if (!gameStarted && waitingForPlayers) {
+        if (!gameStarted && waitingForPlayers) {
             controls.getObject().position.set(0, 1.7, 0);
             isSpawned = false;
             showMessage('他のプレイヤーを待っています...', 'info', 3000);
@@ -87,24 +67,12 @@ ws.onmessage = (event) => {
             controls.getObject().position.set(0, 1.7, 0);
             isSpawned = true;
             canJump = true;
-            
-            // ゲームモードに応じて装備を設定
-            if (currentGameMode === 'pvp') {
-                addSword(camera);
-                removeRedItemsAndBuildings();
-            } else if (currentGameMode === 'tag') {
-                if (myId === oniId) {
-                    addSword(camera);
-                } else {
-                    addRightHand(camera);
-                }
-            }
         }
         
-        if (myId === oniId && gameStarted && currentGameMode === 'tag') {
+        if (myId === oniId && gameStarted) {
             gameState.oniStartTime = Date.now();
             addSword(camera);
-        } else if (currentGameMode !== 'pvp' && (!gameStarted || myId !== oniId)) {
+        } else {
             addRightHand(camera);
         }
         
@@ -112,43 +80,11 @@ ws.onmessage = (event) => {
             if (id !== myId) createPlayerMesh(id, data.players[id]);
         }
         
-        if (currentGameMode !== 'pvp') {
-            for (const id in data.redItems || {}) {
-                createRedItemMesh(id, data.redItems[id]);
-            }
+        for (const id in data.redItems || {}) {
+            createRedItemMesh(id, data.redItems[id]);
         }
         
         updateUI();
-    } else if (data.type === 'voting_started') {
-        votingActive = true;
-        hasVoted = false;
-        showVotingUI();
-        showMessage('モードを投票してください！', 'info', 3000);
-    } else if (data.type === 'vote_update') {
-        updateVotingUI(data.votes, data.votedCount, data.totalPlayers);
-    } else if (data.type === 'voting_ended') {
-        votingActive = false;
-        currentGameMode = data.selectedMode;
-        hideVotingUI();
-        const modeNames = { pvp: 'PVP', tag: 'TAG', parkour: 'PARKOUR' };
-        showMessage(`選ばれたモード: ${modeNames[data.selectedMode]}`, 'success', 3000);
-    } else if (data.type === 'pvp_hit') {
-        if (data.targetId === myId) {
-            myHealth = data.health;
-            applyKnockback();
-            updateHealthUI();
-            if (myHealth <= 0) {
-                isDead = true;
-                showMessage('あなたは倒されました！', 'error', 5000);
-            }
-        } else if (data.targetId in playerHealth) {
-            playerHealth[data.targetId] = data.health;
-        }
-    } else if (data.type === 'player_eliminated') {
-        if (data.playerId === myId) {
-            isDead = true;
-        }
-        showMessage(`プレイヤー ${data.playerId} が倒されました！`, 'info', 3000);
     } else if (data.type === 'force_position') {
         controls.getObject().position.set(data.x, data.y, data.z);
         velocity.set(0, 0, 0);
@@ -168,7 +104,7 @@ ws.onmessage = (event) => {
             startGame();
         }
     } else if (data.type === 'game_over') {
-        const winner = data.winner === 'players' ? 'Players Win!' : data.winner === 'draw' ? 'Draw!' : `${data.winner} Wins!`;
+        const winner = data.winner === 'players' ? 'Players Win!' : 'Tiger Wins!';
         showMessage(winner, 'success', 10000);
         setTimeout(() => location.reload(), 10000);
     } else if (data.type === 'player_update') {
@@ -301,7 +237,6 @@ function startGame() {
     gameCountdown = -1;
     waitingForPlayers = false;
     isSpawned = true;
-    isDead = false;
     controls.getObject().position.y = 1.7;
     velocity.set(0, 0, 0);
     canJump = true;
@@ -312,45 +247,7 @@ function startGame() {
     for (let i = 1; i <= 5; i++) {
         window[`sec${i}Shown`] = false;
     }
-    
-    if (currentGameMode === 'pvp') {
-        myHealth = MAX_HEALTH;
-        removeRedItemsAndBuildings();
-        addSword(camera);
-    } else if (currentGameMode === 'tag') {
-        if (myId === oniId) {
-            addSword(camera);
-        } else {
-            addRightHand(camera);
-        }
-    }
-    
     showMessage('ゲーム開始！', 'success', 2000);
-}
-
-function removeRedItemsAndBuildings() {
-    // 赤いアイテムを削除
-    for (const id in redItems) {
-        if (redItems[id].userData.light) {
-            scene.remove(redItems[id].userData.light);
-        }
-        scene.remove(redItems[id]);
-    }
-    redItems = {};
-    
-    // 建物を削除（壁以外）
-    for (let i = blocks.length - 1; i >= 0; i--) {
-        const block = blocks[i];
-        if (!walls.includes(block)) {
-            scene.remove(block);
-            blocks.splice(i, 1);
-        }
-    }
-}
-
-function applyKnockback() {
-    velocity.y = 15; // ジャンプのように浮かび上がる
-    canJump = false;
 }
 
 const scene = new THREE.Scene();
@@ -547,14 +444,9 @@ function createUI() {
     uiContainer.innerHTML = `
         <div id="player-info">
             <div>プレイヤー: <span id="player-id">${myId}</span></div>
-            <div id="mode-display" style="display: ${currentGameMode ? 'block' : 'none'}">
-                モード: <span id="game-mode">${currentGameMode || ''}</span>
-            </div>
-            <div id="role-display" style="display: ${currentGameMode === 'tag' ? 'block' : 'none'}">
-                役割: <span id="role">${myId === oniId ? '👹 鬼' : '🏃 逃走者'}</span>
-            </div>
+            <div>役割: <span id="role">${myId === oniId ? '👹 鬼' : '🏃 逃走者'}</span></div>
             <div>スコア: <span id="score">${gameState.score}</span></div>
-            <div id="red-items-count" style="display: ${myId !== oniId && currentGameMode === 'tag' ? 'block' : 'none'}">
+            <div id="red-items-count" style="display: ${myId !== oniId ? 'block' : 'none'}">
                 赤いアイテム: <span id="red-items">${gameState.redItemsCollected}</span>/8
             </div>
             <div id="snowball-status" style="display: ${canThrowSnowball ? 'block' : 'none'}; color: #ffffff;">
@@ -563,128 +455,17 @@ function createUI() {
         </div>
         <div id="timer-info" style="margin-top: 10px;">
             <div>ゲーム時間: <span id="game-time">00:00</span> | 残り: <span id="remaining-time">04:00</span></div>
-            <div id="oni-time" style="display: ${myId === oniId && currentGameMode === 'tag' ? 'block' : 'none'}">
+            <div id="oni-time" style="display: ${myId === oniId ? 'block' : 'none'}">
                 鬼時間: <span id="oni-duration">00:00</span></div>
-        </div>
-        <div id="health-display" style="margin-top: 10px; display: ${currentGameMode === 'pvp' ? 'block' : 'none'}">
-            <div id="health-hearts">💜💜💜💜💜💜💜💜💜💜</div>
         </div>
         <div id="instructions" style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
             <div>WASD/矢印: 移動 | Space: ジャンプ | マウス: 視点</div>
-            <div>クリック: 攻撃/雪玉投擲</div>
+            <div>クリック: 雪玉/鬼交代</div>
         </div>
     `;
     
     document.body.appendChild(uiContainer);
     createMinimap();
-}
-
-function showVotingUI() {
-    let votingUI = document.getElementById('voting-ui');
-    if (votingUI) {
-        votingUI.style.display = 'flex';
-        return;
-    }
-    
-    votingUI = document.createElement('div');
-    votingUI.id = 'voting-ui';
-    votingUI.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.95);
-        padding: 40px;
-        border-radius: 20px;
-        border: 3px solid #00ff00;
-        z-index: 5000;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        color: white;
-        font-family: Arial, sans-serif;
-        pointer-events: auto;
-    `;
-    
-    votingUI.innerHTML = `
-        <h2 style="font-size: 32px; margin-bottom: 30px; text-align: center;">🎮 ゲームモードを選択 🎮</h2>
-        <div id="vote-counts" style="margin-bottom: 20px; font-size: 18px; text-align: center;">
-            <div>PVP: <span id="vote-pvp">0</span> | TAG: <span id="vote-tag">0</span> | PARKOUR: <span id="vote-parkour">0</span></div>
-            <div style="margin-top: 10px; font-size: 14px; opacity: 0.7;">投票済み: <span id="voted-count">0</span>/<span id="total-players">0</span></div>
-        </div>
-        <div style="display: flex; gap: 20px; margin-top: 20px;">
-            <button id="vote-pvp-btn" class="vote-button" style="background: linear-gradient(135deg, #ff6b6b, #ff4444); padding: 20px 30px; border: none; border-radius: 15px; color: white; font-size: 20px; font-weight: bold; cursor: pointer; transition: transform 0.2s;">
-                ⚔️ PVP<br><span style="font-size: 14px;">バトルロイヤル</span>
-            </button>
-            <button id="vote-tag-btn" class="vote-button" style="background: linear-gradient(135deg, #4ecdc4, #44a7d1); padding: 20px 30px; border: none; border-radius: 15px; color: white; font-size: 20px; font-weight: bold; cursor: pointer; transition: transform 0.2s;">
-                👹 TAG<br><span style="font-size: 14px;">鬼ごっこ</span>
-            </button>
-            <button id="vote-parkour-btn" class="vote-button" style="background: linear-gradient(135deg, #45b7d1, #3498db); padding: 20px 30px; border: none; border-radius: 15px; color: white; font-size: 20px; font-weight: bold; cursor: pointer; transition: transform 0.2s;">
-                🏃 PARKOUR<br><span style="font-size: 14px;">パルクール</span>
-            </button>
-        </div>
-    `;
-    
-    document.body.appendChild(votingUI);
-    
-    // ホバーエフェクト
-    const buttons = votingUI.querySelectorAll('.vote-button');
-    buttons.forEach(btn => {
-        btn.addEventListener('mouseenter', () => {
-            btn.style.transform = 'scale(1.1)';
-        });
-        btn.addEventListener('mouseleave', () => {
-            btn.style.transform = 'scale(1)';
-        });
-    });
-    
-    // 投票ボタンのイベントリスナー
-    document.getElementById('vote-pvp-btn').addEventListener('click', () => vote('pvp'));
-    document.getElementById('vote-tag-btn').addEventListener('click', () => vote('tag'));
-    document.getElementById('vote-parkour-btn').addEventListener('click', () => vote('parkour'));
-}
-
-function hideVotingUI() {
-    const votingUI = document.getElementById('voting-ui');
-    if (votingUI) {
-        votingUI.style.display = 'none';
-    }
-}
-
-function updateVotingUI(votes, votedCount, totalPlayers) {
-    document.getElementById('vote-pvp').textContent = votes.pvp;
-    document.getElementById('vote-tag').textContent = votes.tag;
-    document.getElementById('vote-parkour').textContent = votes.parkour;
-    document.getElementById('voted-count').textContent = votedCount;
-    document.getElementById('total-players').textContent = totalPlayers;
-}
-
-function vote(mode) {
-    if (hasVoted) return;
-    
-    hasVoted = true;
-    ws.send(JSON.stringify({ type: 'vote', mode: mode }));
-    
-    // ボタンを無効化
-    const buttons = document.querySelectorAll('.vote-button');
-    buttons.forEach(btn => {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.style.cursor = 'not-allowed';
-    });
-    
-    showMessage(`${mode.toUpperCase()} に投票しました！`, 'success', 2000);
-}
-
-function updateHealthUI() {
-    const healthDisplay = document.getElementById('health-hearts');
-    if (!healthDisplay || currentGameMode !== 'pvp') return;
-    
-    let hearts = '';
-    for (let i = 0; i < myHealth; i++) {
-        hearts += '💜';
-    }
-    healthDisplay.textContent = hearts;
 }
 
 function createMinimap() {
@@ -718,16 +499,8 @@ function createPlayerMesh(id, data) {
     const group = new THREE.Group();
     
     const bodyGeometry = new THREE.CapsuleGeometry(0.8, 1.6);
-    let bodyColor = 0x00ff00;
-    
-    if (currentGameMode === 'tag') {
-        bodyColor = id === oniId ? 0x0000ff : 0x00ff00;
-    } else if (currentGameMode === 'pvp') {
-        bodyColor = 0xff6b6b;
-    }
-    
     const bodyMaterial = new THREE.MeshStandardMaterial({ 
-        color: bodyColor,
+        color: id === oniId ? 0x0000ff : 0x00ff00,
         roughness: 0.4,
         metalness: 0.1
     });
@@ -751,14 +524,10 @@ function createPlayerMesh(id, data) {
     scene.add(group);
     players[id] = group;
     
-    if (currentGameMode === 'pvp') {
+    if (id === oniId) {
         addSword(group);
-    } else if (currentGameMode === 'tag') {
-        if (id === oniId) {
-            addSword(group);
-        } else {
-            addRightHand(group);
-        }
+    } else {
+        addRightHand(group);
     }
     
     return group;
@@ -768,11 +537,7 @@ function updatePlayerColors() {
     for (const id in players) {
         const player = players[id];
         if (player.bodyMesh) {
-            if (currentGameMode === 'tag') {
-                player.bodyMesh.material.color.setHex(id === oniId ? 0x0000ff : 0x00ff00);
-            } else if (currentGameMode === 'pvp') {
-                player.bodyMesh.material.color.setHex(0xff6b6b);
-            }
+            player.bodyMesh.material.color.setHex(id === oniId ? 0x0000ff : 0x00ff00);
         }
     }
 }
@@ -1291,7 +1056,7 @@ function createTouchControls() {
     jumpButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
         isTouchingUI = true;
-        if (canJump && !isDead) {
+        if (canJump) {
             velocity.y += 18;
             canJump = false;
         }
@@ -1305,15 +1070,10 @@ function createTouchControls() {
     attackButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
         isTouchingUI = true;
-        if (isDead) return;
-        
-        if (currentGameMode === 'pvp' && gameStarted) {
-            swingSword();
-            checkPVPAttack();
-        } else if (currentGameMode === 'tag' && myId === oniId && gameStarted) {
+        if (myId === oniId && gameStarted) {
             swingSword();
             checkSwordAttack();
-        } else if (canThrowSnowball && myId !== oniId && gameStarted && currentGameMode === 'tag') {
+        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
     });
@@ -1379,32 +1139,14 @@ document.addEventListener('click', () => {
 
 document.addEventListener('mousedown', (e) => {
     if (document.pointerLockElement && e.button === 0) {
-        if (isDead) return;
-        
-        if (currentGameMode === 'pvp' && gameStarted) {
+        if (myId === oniId && gameStarted) {
             swingSword();
-            checkPVPAttack();
-        } else if (currentGameMode === 'tag' && myId === oniId && gameStarted) {
-            swingSword();checkSwordAttack();
-        } else if (canThrowSnowball && myId !== oniId && gameStarted && currentGameMode === 'tag') {
+            checkSwordAttack();
+        } else if (canThrowSnowball && myId !== oniId && gameStarted) {
             throwSnowball();
         }
     }
 });
-
-function checkPVPAttack() {
-    if (!gameStarted || isDead || currentGameMode !== 'pvp') return;
-    
-    for (const id in players) {
-        if (id === myId) continue;
-        const distance = controls.getObject().position.distanceTo(players[id].position);
-        if (distance < 7.5) {
-            console.log(`⚔️ PVP攻撃！ 距離 ${distance.toFixed(2)}m - プレイヤー ${id}`);
-            ws.send(JSON.stringify({ type: 'pvp_attack', attackerId: myId, targetId: id }));
-            return;
-        }
-    }
-}
 
 function checkSwordAttack() {
     if (myId !== oniId || !gameStarted || isStunned) return;
@@ -1460,12 +1202,12 @@ function throwSnowball() {
 
 document.addEventListener('keydown', (event) => {
     if (event.repeat) return;
-    if ((isStunned || isDead) && event.code !== 'Space') return;
+    if (isStunned && event.code !== 'Space') return;
     
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = true;
+            moveBackward = true;  // Changed from moveForward to moveBackward
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1473,7 +1215,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = true;
+            moveForward = true;  // Changed from moveBackward to moveForward
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1481,8 +1223,6 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'Space':
             event.preventDefault();
-            if (isDead) return;
-            
             if (flightEnabled && playerRank === 'OWNER') {
                 if (!isFlying) {
                     isFlying = true;
@@ -1512,7 +1252,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = false;
+            moveBackward = false;  // Changed from moveForward to moveBackward
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1520,7 +1260,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = false;
+            moveForward = false;  // Changed from moveBackward to moveForward
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1528,7 +1268,6 @@ document.addEventListener('keyup', (event) => {
             break;
     }
 });
-
 let lastSentPosition = new THREE.Vector3();
 let lastSentTime = 0;
 
@@ -1582,26 +1321,7 @@ function updateUI() {
     
     if (document.getElementById('player-id')) {
         document.getElementById('player-id').textContent = myId;
-        
-        if (currentGameMode === 'tag') {
-            const roleElement = document.getElementById('role');
-            if (roleElement) roleElement.textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
-            const roleDisplay = document.getElementById('role-display');
-            if (roleDisplay) roleDisplay.style.display = 'block';
-        } else {
-            const roleDisplay = document.getElementById('role-display');
-            if (roleDisplay) roleDisplay.style.display = 'none';
-        }
-        
-        if (currentGameMode) {
-            const modeDisplay = document.getElementById('mode-display');
-            const gameMode = document.getElementById('game-mode');
-            if (modeDisplay && gameMode) {
-                modeDisplay.style.display = 'block';
-                gameMode.textContent = currentGameMode.toUpperCase();
-            }
-        }
-        
+        document.getElementById('role').textContent = myId === oniId ? '👹 鬼' : '🏃 逃走者';
         document.getElementById('score').textContent = gameState.score;
         document.getElementById('game-time').textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         
@@ -1609,19 +1329,10 @@ function updateUI() {
         if (redItemsElement) redItemsElement.textContent = gameState.redItemsCollected;
         
         const redItemsCountElement = document.getElementById('red-items-count');
-        if (redItemsCountElement) redItemsCountElement.style.display = (myId !== oniId && currentGameMode === 'tag') ? 'block' : 'none';
+        if (redItemsCountElement) redItemsCountElement.style.display = myId !== oniId ? 'block' : 'none';
         
         const snowballStatusElement = document.getElementById('snowball-status');
         if (snowballStatusElement) snowballStatusElement.style.display = canThrowSnowball ? 'block' : 'none';
-        
-        if (currentGameMode === 'pvp') {
-            updateHealthUI();
-            const healthDisplay = document.getElementById('health-display');
-            if (healthDisplay) healthDisplay.style.display = 'block';
-        } else {
-            const healthDisplay = document.getElementById('health-display');
-            if (healthDisplay) healthDisplay.style.display = 'none';
-        }
     }
     
     updateMinimap();
@@ -1668,26 +1379,14 @@ function updateMinimap() {
         const x = centerX + (player.position.x - playerPos.x) * scale;
         const y = centerY + (player.position.z - playerPos.z) * scale;
         if (x > 0 && x < canvas.width && y > 0 && y < canvas.height) {
-            if (currentGameMode === 'tag') {
-                ctx.fillStyle = id === oniId ? '#0000ff' : '#00ff00';
-            } else if (currentGameMode === 'pvp') {
-                ctx.fillStyle = '#ff6b6b';
-            } else {
-                ctx.fillStyle = '#00ff00';
-            }
+            ctx.fillStyle = id === oniId ? '#0000ff' : '#00ff00';
             ctx.beginPath();
             ctx.arc(x, y, 4, 0, 2 * Math.PI);
             ctx.fill();
         }
     }
     
-    if (currentGameMode === 'tag') {
-        ctx.fillStyle = myId === oniId ? '#0000ff' : '#00ff00';
-    } else if (currentGameMode === 'pvp') {
-        ctx.fillStyle = '#ff6b6b';
-    } else {
-        ctx.fillStyle = '#00ff00';
-    }
+    ctx.fillStyle = myId === oniId ? '#0000ff' : '#00ff00';
     ctx.beginPath();
     ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
     ctx.fill();
@@ -1733,7 +1432,7 @@ function checkCollisions(targetPosition) {
 }
 
 function checkRedItemCollection() {
-    if (!gameStarted || currentGameMode !== 'tag') return;
+    if (!gameStarted) return;
     const playerPosition = controls.getObject().position;
     for (const id in redItems) {
         const item = redItems[id];
@@ -1777,9 +1476,7 @@ function animate() {
         handleNormalMovement();
     } else if (gameStarted && isSpawned) {
         handleNormalMovement();
-        if (currentGameMode === 'tag') {
-            checkAutoTag();
-        }
+        checkAutoTag();
         
         const mapLimit = 98;
         const pos = controls.getObject().position;
@@ -1853,16 +1550,7 @@ function handleFlightMovement() {
 }
 
 function handleNormalMovement() {
-    if (isStunned || isDead) {
-        if (isDead) {
-            moveForward = false;
-            moveBackward = false;
-            moveLeft = false;
-            moveRight = false;
-            velocity.x = 0;
-            velocity.z = 0;
-        }
-        
+    if (isStunned) {
         velocity.y -= 50.0 * (1/60);
         if (controls.getObject().position.y <= 1.7) {
             velocity.y = 0;
