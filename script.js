@@ -1276,8 +1276,8 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveForward = deltaY < -10;
-        moveBackward = deltaY > 10;
+        moveBackward = deltaY < -10;
+        moveForward = deltaY > 10;
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1448,7 +1448,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = true;  // Changed from moveForward to moveBackward
+            moveForward = true;  // Changed from moveForward to moveBackward
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1456,7 +1456,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = true;  // Changed from moveBackward to moveForward
+            moveBackward = true;  // Changed from moveBackward to moveForward
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1493,7 +1493,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveBackward = false;  // Changed from moveForward to moveBackward
+            moveForward = false;  // Changed from moveForward to moveBackward
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1501,7 +1501,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveForward = false;  // Changed from moveBackward to moveForward
+            moveBackward = false;  // Changed from moveBackward to moveForward
             break;
         case 'KeyD':
         case 'ArrowRight':
