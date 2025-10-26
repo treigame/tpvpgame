@@ -122,6 +122,13 @@ ws.onmessage = (event) => {
         gameMode = data.mode;
         hideVotingUI();
         showMessage(`${data.mode.toUpperCase()}モードに決定！`, 'success', 3000);
+        
+        // PVPモードの説明表示
+        if (gameMode === 'pvp') {
+            setTimeout(() => {
+                showMessage('⚔️ PVPモード: 障害物が消え、全員に剣装備、HP💜×10、攻撃でノックバック、最後の一人が勝者！', 'success', 5000);
+            }, 3000);
+        }
     } else if (data.type === 'game_start') {
         gameStarted = true;
         gameMode = data.mode;
@@ -132,8 +139,17 @@ ws.onmessage = (event) => {
             showHPUI();
             updateHPUI(10);
             removeObstacles();
-            showMessage('⚔️ PVPモード開始！', 'success', 3000);
+            showMessage('⚔️ PVPモード開始！障害物削除、剣装備、HP💜×10！', 'success', 3000);
+        } else if (gameMode === 'parcour') {
+            createAirParcour();
+            showMessage('🧗 Parcourモード開始！空中パルクールに挑戦！', 'success', 3000);
+        } else if (gameMode === 'tag') {
+            showMessage('🏃 Tagモード開始！鬼ごっこスタート！', 'success', 3000);
         }
+        
+        // モード決定後、操作可能に
+        isSpawned = true;
+        canJump = true;
     } else if (data.type === 'pvp_damage') {
         if (data.targetId === myId) {
             myHP = data.hp;
@@ -1668,6 +1684,91 @@ function checkRedItemCollection() {
     }
 }
 
+
+
+// 空中パルクール作成
+function createAirParcour() {
+    console.log('空中パルクールを作成中...');
+    
+    // 既存の建物を削除
+    blocks.forEach(block => {
+        scene.remove(block);
+    });
+    blocks = [];
+    
+    const platformMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x00ffff,
+        metalness: 0.5,
+        roughness: 0.5
+    });
+    
+    const platforms = [
+        // スタート地点
+        { pos: [0, 5, 0], size: [10, 1, 10], color: 0x00ff00 },
+        
+        // ジャンプ台
+        { pos: [15, 7, 0], size: [8, 1, 8], color: 0xffff00 },
+        { pos: [30, 10, 0], size: [8, 1, 8], color: 0xffff00 },
+        { pos: [45, 13, 5], size: [6, 1, 6], color: 0xffff00 },
+        { pos: [55, 16, 15], size: [6, 1, 6], color: 0xffff00 },
+        
+        // 難所
+        { pos: [60, 20, 25], size: [5, 1, 5], color: 0xff8800 },
+        { pos: [55, 24, 35], size: [4, 1, 4], color: 0xff8800 },
+        { pos: [45, 28, 40], size: [4, 1, 4], color: 0xff8800 },
+        
+        // らせん階段風
+        { pos: [35, 30, 35], size: [6, 1, 6], color: 0xff00ff },
+        { pos: [25, 32, 30], size: [6, 1, 6], color: 0xff00ff },
+        { pos: [15, 34, 25], size: [6, 1, 6], color: 0xff00ff },
+        { pos: [5, 36, 20], size: [6, 1, 6], color: 0xff00ff },
+        
+        // 長いジャンプ
+        { pos: [-10, 38, 15], size: [5, 1, 5], color: 0xff0000 },
+        { pos: [-25, 38, 10], size: [5, 1, 5], color: 0xff0000 },
+        { pos: [-40, 38, 5], size: [5, 1, 5], color: 0xff0000 },
+        
+        // ゴール
+        { pos: [-50, 40, 0], size: [12, 1, 12], color: 0x00ff00 },
+    ];
+    
+    platforms.forEach((platform) => {
+        const geometry = new THREE.BoxGeometry(...platform.size);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: platform.color,
+            metalness: 0.3,
+            roughness: 0.7
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(...platform.pos);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        blocks.push(mesh);
+        
+        // 光るエフェクト
+        const glowGeometry = new THREE.BoxGeometry(
+            platform.size[0] + 0.2,
+            platform.size[1] + 0.2,
+            platform.size[2] + 0.2
+        );
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: platform.color,
+            transparent: true,
+            opacity: 0.3
+        });
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        glow.position.set(...platform.pos);
+        scene.add(glow);
+    });
+    
+    // スタート地点にワープ
+    controls.getObject().position.set(0, 7, 0);
+    velocity.set(0, 0, 0);
+    canJump = true;
+    
+    showMessage('🧗 空中パルクールスタート！', 'success', 3000);
+}
 
 function performPVPAttack() {
     let closestPlayer = null;

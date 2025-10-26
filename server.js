@@ -277,6 +277,21 @@ function startGameWithMode(mode) {
         }
     } else if (mode === 'tag') {
         selectRandomOni();
+    } else if (mode === 'parcour') {
+        // Parcourモード：全プレイヤーを空中のスタート地点にワープ
+        for (const playerId in players) {
+            players[playerId].x = 0;
+            players[playerId].y = 7;
+            players[playerId].z = 0;
+            
+            sendToPlayer(playerId, {
+                type: 'force_position',
+                x: 0,
+                y: 7,
+                z: 0
+            });
+        }
+        console.log('🧗 全プレイヤーを空中パルクールのスタート地点にワープ');
     }
     
     broadcast({
