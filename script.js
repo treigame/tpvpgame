@@ -121,6 +121,7 @@ ws.onmessage = (event) => {
     } else if (data.type === 'voting_result') {
         gameMode = data.mode;
         hideVotingUI();
+        waitingForPlayers = false;
         showMessage(`${data.mode.toUpperCase()}モードに決定！`, 'success', 3000);
         
         // PVPモードの説明表示
@@ -132,6 +133,9 @@ ws.onmessage = (event) => {
     } else if (data.type === 'game_start') {
         gameStarted = true;
         gameMode = data.mode;
+        waitingForPlayers = false;
+        isSpawned = true;
+        canJump = true;
         
         if (gameMode === 'pvp') {
             myHP = 10;
@@ -1328,23 +1332,35 @@ function createTouchControls() {
         touchStartY = e.touches[0].clientY;
     });
     
-    renderer.domElement.addEventListener('touchmove', (e) => {
-        if (isTouchingUI) return;
-        e.preventDefault();
-        
-        const touchX = e.touches[0].clientX;
-        const touchY = e.touches[0].clientY;
-        
-        const deltaX = (touchX - touchStartX) * 0.002;
-        const deltaY = (touchY - touchStartY) * 0.002;
-        
-        camera.rotation.y -= deltaX;
-        camera.rotation.x -= deltaY;
-        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-        
-        touchStartX = touchX;
-        touchStartY = touchY;
-    });
+    document.addEventListener('touchmove', (e) => {
+    if (!isTabletMode || isTouchingUI) return;
+    
+    const touch = e.touches[0];
+    if (!touch) return;
+    
+    // 初回タッチ
+    if (touchStartX === 0 && touchStartY === 0) {
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        return;
+    }
+    
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    
+    // 視点操作を上下左右のみに制限
+    camera.rotation.y -= deltaX * 0.003;
+    camera.rotation.x -= deltaY * 0.003;
+    camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+    
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+});
+
+document.addEventListener('touchend', () => {
+    touchStartX = 0;
+    touchStartY = 0;
+});
 }
 
 function removeTouchControls() {
