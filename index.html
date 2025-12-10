@@ -3,369 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D マルチプレイヤー鬼ごっこゲーム</title>
-    <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            font-family: 'Arial', sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        }
-        
-        #loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
-            color: white;
-            transition: opacity 0.5s ease-out;
-        }
-        
-        #loading-screen.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
-        
-        .loading-title {
-            font-size: 3em;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            margin-bottom: 20px;
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
-            background-size: 400% 400%;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: gradientShift 3s ease-in-out infinite;
-        }
-        
-        @keyframes gradientShift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-        
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255,255,255,0.3);
-            border-top: 4px solid #ffffff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .loading-text {
-            font-size: 1.2em;
-            margin-bottom: 10px;
-            opacity: 0.8;
-        }
-        
-        .game-instructions {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px 25px;
-            border-radius: 10px;
-            font-size: 14px;
-            text-align: center;
-            z-index: 1001;
-            border: 2px solid #00ff00;
-            display: none;
-            max-width: 90%;
-        }
-        
-        .game-instructions.visible {
-            display: block;
-            animation: fadeInUp 0.5s ease-out;
-        }
-        
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateX(-50%) translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0);
-            }
-        }
-        
-        .controls-hint {
-            margin-top: 10px;
-            font-size: 12px;
-            opacity: 0.7;
-            line-height: 1.4;
-        }
-        
-        .error-message, .success-message {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 9999;
-            text-align: center;
-            font-size: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            display: none;
-        }
-        
-        .error-message { background: rgba(255, 0, 0, 0.9); }
-        .success-message { background: rgba(0, 255, 0, 0.9); }
-        
-        .crosshair {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 20px;
-            height: 20px;
-            z-index: 1000;
-            pointer-events: none;
-        }
-        
-        .crosshair::before, .crosshair::after {
-            content: '';
-            position: absolute;
-            background-color: rgba(255, 255, 255, 0.8);
-            border-radius: 1px;
-        }
-        
-        .crosshair::before {
-            width: 2px;
-            height: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        .crosshair::after {
-            width: 20px;
-            height: 2px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-        
-        .performance-indicator {
-            position: fixed;
-            top: 20px;
-            right: 180px;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-family: monospace;
-            font-size: 11px;
-            z-index: 1001;
-            pointer-events: none;
-        }
-        
-        .connection-status {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 5px 15px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            z-index: 1001;
-            transition: all 0.3s ease;
-        }
-        
-        .connection-status.connected { background: rgba(0, 255, 0, 0.8); color: white; }
-        .connection-status.disconnected { background: rgba(255, 0, 0, 0.8); color: white; }
-        .connection-status.connecting { background: rgba(255, 255, 0, 0.8); color: black; }
-        
-        .help-button {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            font-size: 18px;
-            font-weight: bold;
-            z-index: 1001;
-            transition: background-color 0.3s;
-        }
-        
-        .help-button:hover { background: rgba(255, 255, 255, 0.2); }
-    </style>
+    <title>オンラインチェス</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="loading-screen">
-        <div class="loading-title">🏃‍♀️ 3D 鬼ごっこ 👹</div>
+        <div class="loading-title">♟️ オンラインチェス ♔</div>
         <div class="loading-spinner"></div>
-        <div class="loading-text">ゲームを読み込み中...</div>
-        <div class="loading-text" style="font-size: 0.9em;">クリックしてゲームを開始</div>
+        <div class="loading-text">接続中...</div>
     </div>
 
     <div id="connection-status" class="connection-status connecting">接続中...</div>
-    <div class="crosshair"></div>
-    <div id="performance-indicator" class="performance-indicator">FPS: 60</div>
 
-    <div id="game-instructions" class="game-instructions">
-        <div><strong>🎮 操作方法</strong></div>
-        <div><strong>WASD:</strong> 移動 | <strong>Space:</strong> ジャンプ | <strong>マウス:</strong> 視点移動</div>
-        <div class="controls-hint">
-            <strong>🔴 赤いアイテムを8個集めて雪玉で鬼を倒そう！</strong><br>
-            👹 <strong>鬼:</strong> 他のプレイヤーにタッチ/剣で攻撃して役割交代<br>
-            🏃 <strong>逃走者:</strong> 鬼から逃げて赤いアイテムを集める<br>
-            🧱 <strong>建物:</strong> 隠れ場所として活用しよう<br>
-            ⚙️ <strong>Settings:</strong> 右上からタブレットモード切替可能<br>
-            ❓ <strong>F1キー:</strong> この説明を再表示
+    <div id="game-container" style="display: none;">
+        <div id="game-info">
+            <div id="player-info">
+                <div>プレイヤー: <span id="player-id"></span></div>
+                <div>色: <span id="player-color"></span></div>
+                <div>ターン: <span id="current-turn"></span></div>
+            </div>
+            <div id="captured-pieces">
+                <div class="captured-section">
+                    <h4>⚪ 白の獲得駒</h4>
+                    <div id="white-captured"></div>
+                </div>
+                <div class="captured-section">
+                    <h4>⚫ 黒の獲得駒</h4>
+                    <div id="black-captured"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="chess-board"></div>
+
+        <div id="waiting-message" style="display: none;">
+            <h2>対戦相手を待っています...</h2>
+            <p>プレイヤー数: <span id="player-count">1</span>/2</p>
+        </div>
+
+        <div id="game-result" style="display: none;">
+            <h2 id="result-text"></h2>
+            <button id="rematch-btn">再戦</button>
         </div>
     </div>
 
-    <div id="help-button" class="help-button" title="ヘルプ (F1)">?</div>
     <div id="error-message" class="error-message"></div>
     <div id="success-message" class="success-message"></div>
 
-    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.149.0/examples/jsm/"
-        }
-    }
-    </script>
-
-    <script>
-        let gameLoaded = false;
-        let userInteracted = false;
-        let connectionStatus = 'connecting';
-        let lastFrameTime = performance.now();
-        let frameCount = 0;
-        let fps = 60;
-
-        function updateConnectionStatus(status) {
-            connectionStatus = status;
-            const indicator = document.getElementById('connection-status');
-            indicator.className = `connection-status ${status}`;
-            switch(status) {
-                case 'connected': indicator.textContent = '🟢 接続済み'; break;
-                case 'disconnected': indicator.textContent = '🔴 切断'; break;
-                case 'connecting': indicator.textContent = '🟡 接続中...'; break;
-            }
-        }
-
-        function updatePerformance() {
-            frameCount++;
-            const currentTime = performance.now();
-            if (currentTime - lastFrameTime >= 1000) {
-                fps = Math.round((frameCount * 1000) / (currentTime - lastFrameTime));
-                frameCount = 0;
-                lastFrameTime = currentTime;
-                const indicator = document.getElementById('performance-indicator');
-                if (indicator) {
-                    indicator.textContent = `FPS: ${fps}`;
-                    indicator.style.color = fps >= 50 ? '#00ff00' : fps >= 30 ? '#ffff00' : '#ff0000';
-                }
-            }
-            requestAnimationFrame(updatePerformance);
-        }
-
-        function waitForUserInteraction() {
-            document.addEventListener('click', function startGame() {
-                if (!userInteracted) {
-                    userInteracted = true;
-                    document.removeEventListener('click', startGame);
-                    if (gameLoaded) hideLoadingScreen();
-                    else document.querySelector('.loading-text').textContent = 'ゲームを開始しています...';
-                }
-            });
-        }
-
-        function hideLoadingScreen() {
-            const loadingScreen = document.getElementById('loading-screen');
-            const instructions = document.getElementById('game-instructions');
-            loadingScreen.classList.add('hidden');
-            instructions.classList.add('visible');
-            setTimeout(() => loadingScreen.style.display = 'none', 500);
-            setTimeout(() => instructions.classList.remove('visible'), 10000);
-        }
-
-        function toggleInstructions() {
-            const instructions = document.getElementById('game-instructions');
-            if (instructions.classList.contains('visible')) {
-                instructions.classList.remove('visible');
-            } else {
-                instructions.classList.add('visible');
-                setTimeout(() => instructions.classList.remove('visible'), 5000);
-            }
-        }
-
-        function showMessage(text, type = 'info', duration = 3000) {
-            let messageElement = type === 'error' ? document.getElementById('error-message') : document.getElementById('success-message');
-            if (messageElement) {
-                messageElement.textContent = text;
-                messageElement.style.display = 'block';
-                setTimeout(() => messageElement.style.display = 'none', duration);
-            }
-        }
-
-        function onGameLoaded() {
-            gameLoaded = true;
-            updateConnectionStatus('connected');
-            if (userInteracted) hideLoadingScreen();
-            else document.querySelector('.loading-text').textContent = 'クリックしてゲームを開始';
-        }
-
-        waitForUserInteraction();
-        updatePerformance();
-        updateConnectionStatus('connecting');
-
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                const script = document.createElement('script');
-                script.type = 'module';
-                script.src = 'script.js';
-                script.onload = onGameLoaded;
-                script.onerror = () => {
-                    showMessage('ゲームの読み込みに失敗しました。', 'error');
-                    updateConnectionStatus('disconnected');
-                };
-                document.body.appendChild(script);
-            }, 1000);
-        });
-
-        document.getElementById('help-button').addEventListener('click', toggleInstructions);
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'F1') { e.preventDefault(); toggleInstructions(); }
-            if (e.key === 'Escape' && document.pointerLockElement) document.exitPointerLock();
-        });
-
-        window.addEventListener('beforeunload', (e) => {
-            if (gameLoaded && userInteracted && connectionStatus === 'connected') {
-                e.preventDefault();
-                e.returnValue = 'ゲームを終了しますか？';
-            }
-        });
-    </script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>
