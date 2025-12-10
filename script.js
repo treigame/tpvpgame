@@ -34,6 +34,7 @@ ws.onopen = () => {
 
 ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    console.log('受信データ:', data);
     
     switch (data.type) {
         case 'init':
@@ -42,6 +43,8 @@ ws.onmessage = (event) => {
             gameState = data.gameState;
             currentTurn = data.currentTurn;
             isGameActive = data.isGameActive;
+            
+            console.log('初期化:', { myId, myColor, isGameActive });
             
             document.getElementById('player-id').textContent = myId;
             document.getElementById('player-color').textContent = myColor === 'white' ? '⚪ 白' : '⚫ 黒';
@@ -52,17 +55,21 @@ ws.onmessage = (event) => {
                 showWaitingMessage(data.playerCount || 1);
             } else {
                 hideWaitingMessage();
+                initBoard();
                 renderBoard();
                 updateTurnDisplay();
             }
             break;
             
         case 'game_start':
+            console.log('ゲーム開始');
             isGameActive = true;
             gameState = data.gameState;
             currentTurn = data.currentTurn;
             hideWaitingMessage();
+            initBoard();
             renderBoard();
+            updateTurnDisplay();
             showMessage('ゲーム開始！', 'success', 2000);
             break;
             
@@ -80,6 +87,7 @@ ws.onmessage = (event) => {
             
         case 'invalid_move':
             showMessage('無効な手です', 'error', 2000);
+            clearSelection();
             break;
             
         case 'game_over':
@@ -106,8 +114,10 @@ ws.onerror = (error) => {
 };
 
 function initBoard() {
+    console.log('盤面を初期化');
     const board = document.getElementById('chess-board');
     board.innerHTML = '';
+    board.style.display = 'grid';
     
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
@@ -122,8 +132,12 @@ function initBoard() {
 }
 
 function renderBoard() {
-    if (!gameState) return;
+    if (!gameState || !gameState.board) {
+        console.log('ゲーム状態がありません');
+        return;
+    }
     
+    console.log('盤面をレンダリング');
     const board = document.getElementById('chess-board');
     const squares = board.querySelectorAll('.square');
     
@@ -145,15 +159,21 @@ function renderBoard() {
 }
 
 function handleSquareClick(event) {
-    if (!isGameActive || currentTurn !== myColor) return;
+    if (!isGameActive || currentTurn !== myColor) {
+        console.log('クリック無効:', { isGameActive, currentTurn, myColor });
+        return;
+    }
     
     const square = event.currentTarget;
     const row = parseInt(square.dataset.row);
     const col = parseInt(square.dataset.col);
     const piece = gameState.board[row][col];
     
+    console.log('マス目クリック:', { row, col, piece, selectedSquare });
+    
     if (selectedSquare) {
         // 駒を動かす
+        console.log('駒を移動:', selectedSquare, '→', { row, col });
         ws.send(JSON.stringify({
             type: 'move',
             from: selectedSquare,
@@ -163,25 +183,18 @@ function handleSquareClick(event) {
         clearSelection();
     } else if (piece && piece.color === myColor) {
         // 駒を選択
+        console.log('駒を選択:', { row, col, piece });
         selectedSquare = { row, col };
         highlightSquare(row, col);
-        showValidMoves(row, col);
     }
 }
 
 function highlightSquare(row, col) {
+    clearSelection();
     const squares = document.querySelectorAll('.square');
     const index = row * 8 + col;
     squares[index].classList.add('selected');
-}
-
-function showValidMoves(row, col) {
-    // サーバーに有効な手を問い合わせる
-    ws.send(JSON.stringify({
-        type: 'get_valid_moves',
-        row,
-        col
-    }));
+    selectedSquare = { row, col };
 }
 
 function clearSelection() {
@@ -222,15 +235,16 @@ function updateCapturedPieces(captured) {
 }
 
 function showWaitingMessage(playerCount) {
+    console.log('待機メッセージ表示');
     document.getElementById('waiting-message').style.display = 'block';
     document.getElementById('player-count').textContent = playerCount;
     document.getElementById('game-container').style.display = 'none';
 }
 
 function hideWaitingMessage() {
+    console.log('待機メッセージ非表示');
     document.getElementById('waiting-message').style.display = 'none';
     document.getElementById('game-container').style.display = 'flex';
-    initBoard();
 }
 
 function showGameResult(winner, reason) {
@@ -249,7 +263,6 @@ function showGameResult(winner, reason) {
 }
 
 document.getElementById('rematch-btn').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'rematch' }));
     location.reload();
 });
 
@@ -270,6 +283,7 @@ function updateConnectionStatus(status) {
 }
 
 function hideLoadingScreen() {
+    console.log('ローディング画面を非表示');
     const loadingScreen = document.getElementById('loading-screen');
     loadingScreen.classList.add('hidden');
     setTimeout(() => loadingScreen.style.display = 'none', 500);
@@ -286,3 +300,8 @@ function showMessage(text, type = 'info', duration = 3000) {
         setTimeout(() => messageElement.style.display = 'none', duration);
     }
 }
+
+// ページ読み込み時の初期化
+window.addEventListener('load', () => {
+    console.log('ページ読み込み完了');
+});
