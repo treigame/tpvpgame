@@ -1280,8 +1280,9 @@ function createTouchControls() {
         
         stickLeft.style.transform = `translate(calc(-50% + ${stickX}px), calc(-50% + ${stickY}px))`;
         
-        moveBackward = deltaY < -10;
-        moveForward = deltaY > 10;
+        // 修正: 上下の操作を正しく設定
+        moveForward = deltaY < -10;  // 上にスワイプで前進
+        moveBackward = deltaY > 10;  // 下にスワイプで後退
         moveLeft = deltaX < -10;
         moveRight = deltaX > 10;
     });
@@ -1348,7 +1349,7 @@ function createTouchControls() {
     const deltaX = touch.clientX - touchStartX;
     const deltaY = touch.clientY - touchStartY;
     
-    // 視点操作を上下左右のみに制限
+    // 視点操作
     camera.rotation.y -= deltaX * 0.003;
     camera.rotation.x -= deltaY * 0.003;
     camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -1457,6 +1458,7 @@ function throwSnowball() {
     updateUI();
 }
 
+// 修正: キーボード操作を正しく設定
 document.addEventListener('keydown', (event) => {
     if (event.repeat) return;
     if (isStunned && event.code !== 'Space') return;
@@ -1464,7 +1466,7 @@ document.addEventListener('keydown', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = true;  // Changed from moveForward to moveBackward
+            moveForward = true;  // 前進
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1472,7 +1474,7 @@ document.addEventListener('keydown', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = true;  // Changed from moveBackward to moveForward
+            moveBackward = true;  // 後退
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1509,7 +1511,7 @@ document.addEventListener('keyup', (event) => {
     switch (event.code) {
         case 'KeyW':
         case 'ArrowUp':
-            moveForward = false;  // Changed from moveForward to moveBackward
+            moveForward = false;
             break;
         case 'KeyA':
         case 'ArrowLeft':
@@ -1517,7 +1519,7 @@ document.addEventListener('keyup', (event) => {
             break;
         case 'KeyS':
         case 'ArrowDown':
-            moveBackward = false;  // Changed from moveBackward to moveForward
+            moveBackward = false;
             break;
         case 'KeyD':
         case 'ArrowRight':
@@ -1525,6 +1527,7 @@ document.addEventListener('keyup', (event) => {
             break;
     }
 });
+
 let lastSentPosition = new THREE.Vector3();
 let lastSentTime = 0;
 
@@ -1700,8 +1703,6 @@ function checkRedItemCollection() {
     }
 }
 
-
-
 // 空中パルクール作成
 function createAirParcour() {
     console.log('空中パルクールを作成中...');
@@ -1710,7 +1711,7 @@ function createAirParcour() {
     blocks.forEach(block => {
         scene.remove(block);
     });
-    blocks = [];
+    blocks.length = 0;
     
     const platformMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x00ffff,
