@@ -74,11 +74,10 @@ ws.onmessage = (event) => {
         }
         
         if (!gameStarted && waitingForPlayers) {
-            controls.getObject().position.set(0, 1.7, 0);
-            isSpawned = false;
+            isSpawned = true;  // 待機中も動けるように
+            canJump = true;
             showMessage('他のプレイヤーを待っています...', 'info', 3000);
         } else if (gameStarted) {
-            controls.getObject().position.set(0, 1.7, 0);
             isSpawned = true;
             canJump = true;
         }
@@ -100,14 +99,20 @@ ws.onmessage = (event) => {
         
         updateUI();
     } else if (data.type === 'force_position') {
-        controls.getObject().position.set(data.x, data.y, data.z);
+        // 位置の強制更新を受け入れるが、すぐには動かさない
+        console.log(`位置更新受信: (${data.x}, ${data.y}, ${data.z})`);
+        // 初回接続時のみ位置を設定
+        if (!isSpawned && controls.getObject().position.length() === 0) {
+            controls.getObject().position.set(data.x, data.y, data.z);
+        }
         velocity.set(0, 0, 0);
         canJump = true;
+        isSpawned = true;
     } else if (data.type === 'waiting_for_players') {
         waitingForPlayers = true;
         gameStarted = false;
-        controls.getObject().position.set(0, 1.7, 0);
-        isSpawned = false;
+        isSpawned = true;  // 待機中も動けるように変更
+        canJump = true;
         showMessage(`プレイヤー待機中 (${data.currentPlayers}/3)`, 'info', 2000);
     
     } else if (data.type === 'voting_start') {
@@ -1856,13 +1861,6 @@ function animate() {
     
     if (isFlying && flightEnabled) {
         handleFlightMovement();
-    } else if (waitingForPlayers || !gameStarted) {
-        if (controls.getObject().position.y !== 1.7) {
-            controls.getObject().position.y = 1.7;
-        }
-        velocity.set(0, 0, 0);
-        canJump = true;
-        handleNormalMovement();
     } else if (gameStarted && isSpawned) {
         handleNormalMovement();
         checkAutoTag();
@@ -1875,6 +1873,16 @@ function animate() {
         if (pos.z > mapLimit) pos.z = mapLimit;
         
         checkRedItemCollection();
+    } else if (waitingForPlayers || !gameStarted) {
+        // 待機中でも移動できるように
+        handleNormalMovement();
+        
+        const mapLimit = 98;
+        const pos = controls.getObject().position;
+        if (pos.x < -mapLimit) pos.x = -mapLimit;
+        if (pos.x > mapLimit) pos.x = mapLimit;
+        if (pos.z < -mapLimit) pos.z = -mapLimit;
+        if (pos.z > mapLimit) pos.z = mapLimit;
     }
     
     sendPositionUpdate();
